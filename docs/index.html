@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日米業種リードラグ戦略 - デモ</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .demo-notice {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .feature-list {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .feature-list ul { margin: 10px 0; padding-left: 20px; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #2196F3, #1976d2);
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 10px 5px;
+            font-weight: bold;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 日米業種リードラグ戦略</h1>
+        <p style="color: #666; margin-bottom: 20px;">初心者向け ETF 投資システム</p>
+
+        <div class="demo-notice">
+            <strong>⚠️ デモページについて</strong><br>
+            このページは静的なデモページです。実際のシグナル生成にはバックエンドサーバーが必要です。
+        </div>
+
+        <div class="feature-list">
+            <strong>✅ 主な機能</strong>
+            <ul>
+                <li>楽天証券対応（ETF が 1 口から購入可能）</li>
+                <li>自動シグナル生成（ページ読み込み時）</li>
+                <li>投資額計算・表示（価格データ付き）</li>
+                <li>パラメータ永続化（localStorage）</li>
+                <li>CSV エクスポート機能</li>
+                <li>初心者向け UI（買い候補のみ表示）</li>
+            </ul>
+        </div>
+
+        <h2>🚀 クイックスタート</h2>
+        <ol>
+            <li>リポジトリをクローン</li>
+            <pre><code>git clone https://github.com/kaenozu/lead_lag_strategy.git
+cd lead_lag_strategy</code></pre>
+
+            <li>依存関係をインストール</li>
+            <pre><code>npm install</code></pre>
+
+            <li>サーバーを起動</li>
+            <pre><code>node server.js</code></pre>
+
+            <li>ブラウザでアクセス</li>
+            <pre><code>http://localhost:3000</code></pre>
+        </ol>
+
+        <h2>💰 推奨投資額（楽天証券）</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <tr style="background: #f5f5f5;">
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">銘柄数</th>
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">必要資金</th>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">1 銘柄</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">約 3-9 万円</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">5 銘柄（買い候補）</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">約 25-30 万円</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">17 銘柄（全銘柄）</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">約 80-100 万円</td>
+            </tr>
+        </table>
+
+        <h2>📈 パフォーマンス（バックテスト）</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <tr style="background: #f5f5f5;">
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">戦略</th>
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">年率</th>
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">R/R 比</th>
+                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">最大 DD</th>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">PCA SUB（最適）</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">6.93%</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">0.83</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">-20.63%</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">PCA PLAIN</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">2.81%</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">0.29</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">-16.06%</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px; border: 1px solid #ddd;">MOMENTUM</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">1.40%</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">0.14</td>
+                <td style="padding: 10px; border: 1px solid #ddd;">-20.12%</td>
+            </tr>
+        </table>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="https://github.com/kaenozu/lead_lag_strategy" class="btn">📦 GitHub リポジトリ</a>
+            <a href="https://github.com/kaenozu/lead_lag_strategy/blob/main/BEGINNER_GUIDE.md" class="btn">📘 初心者ガイド</a>
+        </div>
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
+            <strong>⚠️ リスク警告:</strong> 投資にはリスクが伴います。元本割れの可能性があり、過去のパフォーマンスは将来を保証しません。余剰資金で取引してください。
+        </div>
+    </div>
+</body>
+</html>
