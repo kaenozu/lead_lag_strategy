@@ -1,5 +1,44 @@
 # 日米業種リードラグ戦略 - 実装レポート
 
+## はじめに（初心者向け）
+
+このリポジトリは**投資助言ではなく**、研究・検証用のコードです。実取引は**自己責任**で、元本割れの可能性があります。
+
+**まず読む:** 運用の考え方と手順は **[BEGINNER_GUIDE.md](BEGINNER_GUIDE.md)** にまとめています。
+
+### 最短の手順（推奨）
+
+エントリポイントは **`package.json` の npm scripts** を使うのが確実です（`main` の `backtest.js` は実験用が混ざった大きなファイルなので、初心者は実行不要です）。
+
+```bash
+cd lead_lag_strategy    # クローンしたディレクトリ名に合わせてください
+npm install
+npm run doctor          # 任意: Node / data/ / results 書き込みを事前チェック
+npm run setup           # 初回: Yahoo から data/*.csv を取得しバックテスト（数分〜）
+npm run signal          # 毎日: ローカル data からシグナル（results/ に出力）
+```
+
+- **Web UI**（ブラウザでシグナル・バックテスト）: 別ターミナルで `npm run server` または **`npm start`**（同じ）→ ブラウザで **http://localhost:3000** を開く。
+- **過去パフォーマンスの分析**: `npm run analysis`（`results/analysis_report.json` など）。
+- **テスト**: `npm test`（ユニット・構文チェック・`doctor:ci` 軽量チェックを含む）
+- **ペーパートレード（デモ）**: `npm run paper`（仮想約定のサンプルと `results/paper_trading_*.csv`）
+
+### どのファイルを使うか
+
+| 分類 | ファイル | 用途 |
+|------|-----------|------|
+| **まず使う** | `backtest_improved.js` | データ取得・パラメータ探索・バックテスト（`npm run setup`） |
+| | `generate_signal.js` | 毎日のシグナル（`npm run signal`） |
+| | `server.js` | Web API と静的 UI（`npm run server`） |
+| | `analysis.js` | 年次・レジーム等の分析（`npm run analysis`） |
+| **設定の参照** | `sector_constants.js` | 米日 ETF ティッカーとセクターラベル |
+| | `lib/lead_lag_core.js` | PCA・シグナル計算の数値コア |
+| | `lib/lead_lag_matrices.js` | リターン行列構築（JP の寄り大引けリターンを分離） |
+| **参考** | `subspace_pca.py` | Python 版（論文実装イメージ） |
+| **実験・旧版** | `backtest.js`, `backtest_v*.js`, `backtest_*.js`（上記以外） | 比較・検証用。迷ったら触らなくてよい |
+
+---
+
 ## 概要
 
 部分空間正則化付き PCA を用いた日米業種リードラグ投資戦略を実装し、実市場データ（2018-2025 年）でバックテストを実施。
@@ -36,16 +75,22 @@
 3. **リスク特性の改善**: PCA SUB はリスク 8.33% と最も低く効率的
 4. **累積リターン**: 7 年間で +56.59%（年率 6.93%）
 
-## 実装ファイル
+## 実装ファイル（ディレクトリ構成）
 
 ```
 lead_lag_strategy/
-├── backtest_improved.js    # 改良版バックテスト（パラメータ最適化付き）
-├── backtest_real.js        # 実市場データ版
-├── backtest.js             # サンプルデータ版
+├── backtest_improved.js    # 推奨: データ取得・バックテスト（npm run setup）
+├── generate_signal.js      # 推奨: シグナル（npm run signal）
+├── server.js               # Web UI（npm run server）
+├── analysis.js             # 分析（npm run analysis）
+├── sector_constants.js     # ティッカー・セクター定義
+├── lib/lead_lag_core.js   # PCA / シグナル数値コア
+├── lib/lead_lag_matrices.js
+├── backtest_real.js        # 実市場データ版（実験系）
+├── backtest.js             # サンプル・実験（npm main だが初心者は不要）
 ├── subspace_pca.py         # Python 版（参考用）
-├── data/                   # 取得した ETF データ
-└── results/                # バックテスト結果
+├── data/                   # 取得した ETF データ（setup 後に生成）
+└── results/                # バックテスト・シグナル出力
     ├── backtest_summary_improved.csv
     ├── optimal_parameters.csv
     ├── cumulative_*.csv
@@ -54,10 +99,34 @@ lead_lag_strategy/
 
 ## 実行方法
 
+推奨は npm 経由です。
+
 ```bash
-cd lead_lag_strategy
-node backtest_improved.js
+npm install
+npm run setup    # 初回・データ更新時（ネットワーク利用、時間がかかります）
+npm run signal   # ローカル data/ が揃っている必要があります
 ```
+
+同等の直接実行:
+
+```bash
+node backtest_improved.js
+node generate_signal.js
+```
+
+Web サーバー:
+
+```bash
+npm run server
+# または npm start（同じ）
+# http://localhost:3000 — API の設定を HTTP で書き換える場合のみ
+# 環境変数 ALLOW_CONFIG_MUTATION=1 が必要です（通常は不要）。
+```
+
+開発・CI:
+
+- `npm run doctor:ci` … `data/` なしでも通る Node / `results/` 書き込みチェック（`npm test` に含みます）
+- `npm run paper` … ペーパートレード API のデモ実行
 
 ## 考察
 

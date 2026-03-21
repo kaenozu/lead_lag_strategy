@@ -3,6 +3,8 @@
  * 銘柄選択シグナルをリアルタイムで生成
  */
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const YahooFinance = require('yahoo-finance2').default;
@@ -48,6 +50,56 @@ function allowHeavyApi(res) {
     }
     lastHeavyApiAt = now;
     return true;
+}
+
+/** CLI（generate_signal）用ローカル CSV の有無・鮮度。Web のシグナル API は Yahoo 直取得。 */
+function getLocalDataStatus() {
+    const dataDir = path.join(__dirname, 'data');
+    const need = [...new Set([...US_ETF_TICKERS, ...JP_ETF_TICKERS])];
+    const expected = need.length;
+    const out = {
+        webSignalSource: 'yahoo_finance_live',
+        dataDirExists: false,
+        expectedCsv: expected,
+        presentCsv: 0,
+        missingTickers: [],
+        newestMtimeMs: null,
+        newestIso: null,
+        newestTicker: null,
+        hintJa: null,
+    };
+    if (!fs.existsSync(dataDir)) {
+        out.hintJa =
+            'ターミナルで npm run setup を実行すると data/ に CSV が保存されます（generate_signal 用）。この画面のシグナルは Yahoo を都度参照します。';
+        return out;
+    }
+    out.dataDirExists = true;
+    const missing = [];
+    let newest = { ms: 0, ticker: null };
+    for (const t of need) {
+        const f = path.join(dataDir, `${t}.csv`);
+        if (!fs.existsSync(f)) {
+            missing.push(t);
+            continue;
+        }
+        out.presentCsv += 1;
+        const st = fs.statSync(f);
+        if (st.mtimeMs > newest.ms) newest = { ms: st.mtimeMs, ticker: t };
+    }
+    out.missingTickers = missing;
+    if (newest.ms > 0) {
+        out.newestMtimeMs = newest.ms;
+        out.newestIso = new Date(newest.ms).toISOString();
+        out.newestTicker = newest.ticker;
+    }
+    const ageDays = newest.ms > 0 ? (Date.now() - newest.ms) / (86400 * 1000) : null;
+    if (missing.length > 0) {
+        out.hintJa = `data/ に CSV が ${missing.length} 本足りません。npm run doctor で確認し、npm run setup を試してください。`;
+    } else if (ageDays != null && ageDays > 5) {
+        out.hintJa =
+            'ローカル CSV の更新から 5 日以上経っています。CLI を使う場合は npm run setup の再実行を検討してください。';
+    }
+    return out;
 }
 
 // データ取得
@@ -379,6 +431,16 @@ app.post('/api/signal', async (req, res) => {
     }
 });
 
+// ローカル data/ の状態（CLI 用）。Web シグナル自体は Yahoo ライブ取得。
+app.get('/api/data-status', (req, res) => {
+    try {
+        res.json(getLocalDataStatus());
+    } catch (e) {
+        console.error('data-status:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // 設定取得 API
 app.get('/api/config', (req, res) => {
     res.json(CONFIG);
@@ -410,6 +472,7 @@ app.listen(PORT, () => {
     console.log(`API エンドポイント:`);
     console.log(`  POST /api/backtest - バックテスト実行`);
     console.log(`  POST /api/signal - シグナル生成`);
+    console.log(`  GET  /api/data-status - ローカル data/ の状態（CLI 用）`);
     console.log(`  GET  /api/config - 設定取得`);
     if (process.env.ALLOW_CONFIG_MUTATION === '1') {
         console.log(`  POST /api/config - 設定更新（ALLOW_CONFIG_MUTATION=1）`);

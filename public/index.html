@@ -453,6 +453,48 @@
             display: block;
         }
         
+        .data-freshness-banner {
+            background: white;
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            font-size: 13px;
+            color: #444;
+            line-height: 1.55;
+        }
+        .freshness-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 6px;
+        }
+        .freshness-row:last-of-type { margin-bottom: 0; }
+        .freshness-label {
+            font-weight: 600;
+            color: var(--dark);
+            flex-shrink: 0;
+        }
+        .freshness-text { flex: 1; min-width: 200px; }
+        .freshness-refresh {
+            border: none;
+            background: var(--light);
+            border-radius: 8px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .freshness-refresh:hover { filter: brightness(0.97); }
+        .freshness-hint {
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #fff8e1;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #5d4037;
+        }
+
         @media (max-width: 1024px) {
             .main-grid {
                 grid-template-columns: 1fr;
@@ -475,6 +517,19 @@
                 <div id="currentTime">--:--:--</div>
             </div>
         </header>
+
+        <div class="data-freshness-banner" id="dataFreshnessBanner">
+            <div class="freshness-row">
+                <span class="freshness-label">Web シグナル</span>
+                <span id="liveSignalFreshness" class="freshness-text">Yahoo から都度取得しています。直近の営業日はシグナル生成後にここに表示されます。</span>
+            </div>
+            <div class="freshness-row">
+                <span class="freshness-label">ローカル data/</span>
+                <span id="localCsvFreshness" class="freshness-text">読み込み中…</span>
+                <button type="button" class="freshness-refresh" id="refreshDataStatus" title="状態を再取得">🔄</button>
+            </div>
+            <div class="freshness-hint" id="dataStatusHint" style="display:none;"></div>
+        </div>
         
         <div class="main-grid">
             <!-- サイドパネル：設定 -->
@@ -511,6 +566,7 @@
                 </form>
                 
                 <div id="backtestResults" style="display: none; margin-top: 20px;">
+                    <div id="backtestErrorHost" style="display: none;"></div>
                     <h3>バックテスト結果</h3>
                     <div class="metrics-grid">
                         <div class="metric-card">
@@ -597,7 +653,12 @@
         <div class="modal">
             <span class="modal-close" onclick="closeHelp()">&times;</span>
             <h2>📘 使い方ガイド</h2>
-            
+            <p class="help-note" style="margin-top: 0;">
+                セットアップ（データ取得）・CLI での毎日の手順・リスクの注意は、<strong>このプロジェクトをクローンしたフォルダ直下</strong>の
+                <code>BEGINNER_GUIDE.md</code> と <code>README.md</code>（先頭の「はじめに」）を参照してください。
+                （フォークした場合も、手元のリポジトリ内の同じファイルが最新です。）
+            </p>
+
             <div class="help-section">
                 <h3>🎯 このシステムの目的</h3>
                 <p style="line-height: 1.8; color: #666;">
@@ -772,6 +833,112 @@
         let currentSignals = [];
         let currentFilter = 'all';
 
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }
+
+        function cliHelpHtmlSignal() {
+            return '<div class="help-note" style="margin-top:12px;font-size:13px;line-height:1.65;color:#444;">' +
+                '<strong>ローカルで CSV を使う場合</strong><br>' +
+                'ターミナルで <code style="background:#eee;padding:2px 6px;border-radius:4px;">npm run doctor</code> で確認 → ' +
+                '問題があれば <code style="background:#eee;padding:2px 6px;border-radius:4px;">npm run setup</code> → ' +
+                '<code style="background:#eee;padding:2px 6px;border-radius:4px;">npm run signal</code><br>' +
+                '<strong>通信・Yahoo 障害</strong> は時間をおいて再試行。<strong>リクエストが多すぎます</strong> と出たら数十秒待ってから再実行してください。' +
+                '</div>';
+        }
+
+        async function readApiJson(res) {
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                return { error: text ? text.slice(0, 240) : ('HTTP ' + res.status) };
+            }
+        }
+
+        function updateLiveSignalFreshness(latestDate) {
+            const el = document.getElementById('liveSignalFreshness');
+            if (!el) return;
+            if (latestDate) {
+                el.textContent = 'Yahoo から都度取得。計算に使ったリターン系列の末尾日付: ' + latestDate;
+            } else {
+                el.textContent = 'Yahoo から都度取得しています。直近の営業日はシグナル生成後にここに表示されます。';
+            }
+        }
+
+        async function loadDataStatus() {
+            const textEl = document.getElementById('localCsvFreshness');
+            const hintEl = document.getElementById('dataStatusHint');
+            if (!textEl) return;
+            textEl.textContent = '読み込み中…';
+            try {
+                const res = await fetch(`${API_BASE}/data-status`);
+                const data = await readApiJson(res);
+                if (!res.ok || data.error) {
+                    textEl.textContent = '状態を取得できませんでした（サーバーは npm run server / npm start ですか？）';
+                    if (hintEl) hintEl.style.display = 'none';
+                    return;
+                }
+                let msg;
+                if (!data.dataDirExists) {
+                    msg = 'フォルダがありません（ターミナルで npm run setup → generate_signal 用の CSV）';
+                } else if (data.missingTickers && data.missingTickers.length > 0) {
+                    msg = 'CSV ' + data.presentCsv + ' / ' + data.expectedCsv + ' 本（不足 ' + data.missingTickers.length + ' 本）';
+                } else {
+                    const d = data.newestMtimeMs ? new Date(data.newestMtimeMs) : null;
+                    const ds = d
+                        ? d.toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })
+                        : '—';
+                    msg =
+                        '全 ' +
+                        data.expectedCsv +
+                        ' 本そろっています。ファイルの最終更新: ' +
+                        ds +
+                        (data.newestTicker ? '（いま最も新しいのは ' + data.newestTicker + '.csv）' : '');
+                }
+                textEl.textContent = msg;
+                if (hintEl) {
+                    if (data.hintJa) {
+                        hintEl.textContent = data.hintJa;
+                        hintEl.style.display = 'block';
+                    } else {
+                        hintEl.style.display = 'none';
+                    }
+                }
+            } catch (e) {
+                textEl.textContent = '状態を取得できませんでした';
+                if (hintEl) hintEl.style.display = 'none';
+            }
+        }
+
+        function showSignalApiError(message, res, data) {
+            let extra = '';
+            if (res && res.status === 429 && data && data.retryAfterSec) {
+                extra = '（約 ' + data.retryAfterSec + ' 秒後に再試行できます）';
+            }
+            document.getElementById('signalContent').innerHTML =
+                '<div class="alert alert-error">❌ ' + escapeHtml(message) + extra + '</div>' + cliHelpHtmlSignal();
+            document.getElementById('exportSection').style.display = 'none';
+        }
+
+        function showBacktestError(message, res, data) {
+            const host = document.getElementById('backtestErrorHost');
+            let extra = '';
+            if (res && res.status === 429 && data && data.retryAfterSec) {
+                extra = '（約 ' + data.retryAfterSec + ' 秒後に再試行）';
+            }
+            host.style.display = 'block';
+            host.innerHTML = '<div class="alert alert-error">❌ ' + escapeHtml(message) + extra + '</div>' + cliHelpHtmlSignal();
+        }
+
+        function clearBacktestError() {
+            const host = document.getElementById('backtestErrorHost');
+            host.style.display = 'none';
+            host.innerHTML = '';
+        }
+
         // ヘルプモーダル
         function openHelp() {
             document.getElementById('helpModal').classList.add('active');
@@ -816,6 +983,9 @@
         setInterval(checkStatus, 5000);
         checkStatus();
 
+        document.getElementById('refreshDataStatus').addEventListener('click', () => loadDataStatus());
+        loadDataStatus();
+
         // 自動シグナル生成（ページ読み込み時）
         async function autoGenerateSignal() {
             const btn = document.getElementById('generateSignalBtn');
@@ -837,13 +1007,10 @@
                     body: JSON.stringify(config)
                 });
 
-                const data = await res.json();
+                const data = await readApiJson(res);
 
-                if (data.error) {
-                    document.getElementById('signalContent').innerHTML = `
-                        <div class="alert alert-error">❌ エラー：${data.error}</div>
-                    `;
-                    document.getElementById('exportSection').style.display = 'none';
+                if (!res.ok || data.error) {
+                    showSignalApiError(data.error || ('サーバーエラー HTTP ' + res.status), res, data);
                 } else {
                     currentSignals = data;
                     currentFilter = 'buy';
@@ -854,11 +1021,13 @@
                     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('.tab[data-tab="buy"]').classList.add('active');
                     
+                    updateLiveSignalFreshness(data.latestDate);
                     // 投資額の目安を更新（実際の価格に基づく）
                     updateInvestmentGuide(data);
                 }
             } catch (e) {
                 console.error('自動シグナル生成エラー:', e);
+                showSignalApiError(e.message || '通信に失敗しました（サーバーは npm run server で起動していますか？）', null, {});
             } finally {
                 btn.disabled = false;
                 btn.textContent = '🚀 シグナル生成';
@@ -1035,25 +1204,20 @@
                     body: JSON.stringify(config)
                 });
 
-                const data = await res.json();
+                const data = await readApiJson(res);
 
-                if (data.error) {
-                    document.getElementById('signalContent').innerHTML = `
-                        <div class="alert alert-error">❌ エラー：${data.error}</div>
-                    `;
-                    document.getElementById('exportSection').style.display = 'none';
+                if (!res.ok || data.error) {
+                    showSignalApiError(data.error || ('サーバーエラー HTTP ' + res.status), res, data);
                 } else {
                     currentSignals = data;
                     currentFilter = 'all';
                     renderSignals('all');
                     showCandidateSections(data);
                     document.getElementById('exportSection').style.display = 'block';
+                    updateLiveSignalFreshness(data.latestDate);
                 }
             } catch (e) {
-                document.getElementById('signalContent').innerHTML = `
-                    <div class="alert alert-error">❌ エラー：${e.message}</div>
-                `;
-                document.getElementById('exportSection').style.display = 'none';
+                showSignalApiError(e.message || '通信に失敗しました（サーバーは npm run server で起動していますか？）', null, {});
             } finally {
                 btn.disabled = false;
                 btn.textContent = '🚀 シグナル生成';
@@ -1067,6 +1231,7 @@
             btn.textContent = '実行中...';
 
             document.getElementById('backtestResults').style.display = 'block';
+            clearBacktestError();
             document.getElementById('btAR').textContent = '--%';
             document.getElementById('btRR').textContent = '--';
             document.getElementById('btMDD').textContent = '--%';
@@ -1087,11 +1252,11 @@
                 });
 
                 console.log('レスポンス受信');
-                const data = await res.json();
+                const data = await readApiJson(res);
                 console.log('データ:', data);
 
-                if (data.error) {
-                    alert(`バックテストエラー：${data.error}`);
+                if (!res.ok || data.error) {
+                    showBacktestError(data.error || ('サーバーエラー HTTP ' + res.status), res, data);
                 } else if (data.metrics) {
                     document.getElementById('btAR').textContent = `${data.metrics.AR.toFixed(2)}%`;
                     document.getElementById('btRR').textContent = data.metrics.RR.toFixed(2);
@@ -1114,12 +1279,12 @@
                         daysEl.textContent = data.metrics.Days;
                     }
                 } else {
-                    alert('不明なエラーが発生しました');
+                    showBacktestError('不明なレスポンスです', res, data);
                 }
 
             } catch (e) {
                 console.error('バックテスト例外:', e);
-                alert(`バックテストエラー：${e.message}`);
+                showBacktestError(e.message || '通信に失敗しました', null, {});
             } finally {
                 btn.disabled = false;
                 btn.textContent = '📈 バックテスト実行';

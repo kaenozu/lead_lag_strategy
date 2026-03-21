@@ -19,6 +19,35 @@ const CONFIG = {
     warmupPeriod: 40,
 };
 
+function printFatal(title, lines) {
+    console.error('\n' + '='.repeat(70));
+    console.error(`【${title}】`);
+    for (const l of lines) console.error(`  ${l}`);
+    console.error('');
+    console.error('次の手順:');
+    console.error('  npm run doctor   … data/ や Node の状態を確認');
+    console.error('  npm run setup    … Yahoo から data/*.csv を取得（初回・不足時）');
+    console.error('  npm run signal    … このコマンドを再実行');
+    console.error('='.repeat(70));
+    process.exit(1);
+}
+
+function listDataProblems(dataDir) {
+    const problems = [];
+    for (const t of [...US_ETF_TICKERS, ...JP_ETF_TICKERS]) {
+        const f = path.join(dataDir, `${t}.csv`);
+        if (!fs.existsSync(f)) {
+            problems.push(`${t}.csv が存在しません`);
+            continue;
+        }
+        const lines = fs.readFileSync(f, 'utf-8').split('\n').filter(l => l.trim());
+        if (lines.length <= 1) {
+            problems.push(`${t}.csv にデータ行がありません`);
+        }
+    }
+    return problems;
+}
+
 function loadLocalData(dataDir, tickers) {
     const results = {};
     for (const t of tickers) {
@@ -73,18 +102,48 @@ async function main() {
 
     const dataDir = path.join(__dirname, 'data');
     const outputDir = path.join(__dirname, 'results');
+    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     console.log('\n[1/3] データ読み込み中...');
+    const dataProblems = listDataProblems(dataDir);
+    if (dataProblems.length > 0) {
+        printFatal('data/ の CSV が不足しているか空です', [
+            'generate_signal はインターネットから取得せず、ローカルの data/*.csv のみを使います。',
+            ...dataProblems.slice(0, 12),
+            dataProblems.length > 12 ? `… 他 ${dataProblems.length - 12} 件` : '',
+        ].filter(Boolean));
+    }
+
     const usData = loadLocalData(dataDir, US_ETF_TICKERS);
     const jpData = loadLocalData(dataDir, JP_ETF_TICKERS);
 
     console.log('[2/3] データ処理中...');
     const { retUs, retJp, retJpOc, dates } = buildLeadLagMatrices(usData, jpData, US_ETF_TICKERS, JP_ETF_TICKERS);
+
+    if (!dates.length || !retJpOc.length) {
+        printFatal('米日の日付を整列しても取引行がありません', [
+            'data/*.csv の日付が極端にずれているか、共通セッションがありません。',
+        ]);
+    }
+
+    const minLen = CONFIG.windowLength + 1;
+    if (retJpOc.length < minLen) {
+        printFatal('履歴日数がシグナル計算に足りません', [
+            `整列後の日数: ${retJpOc.length} 日（必要目安: 少なくとも ${minLen} 日以上）`,
+            'ウィンドウ長を短くするか、より長い期間の CSV を取得してください。',
+        ]);
+    }
+
     const CFull = computeCFull(retUs, retJp);
     console.log(`  最終取引日：${dates[dates.length - 1]}`);
 
     console.log('[3/3] シグナル生成中...\n');
-    const signal = generateSignal(retUs, retJp, retJpOc, CONFIG, SECTOR_LABELS, CFull);
+    let signal;
+    try {
+        signal = generateSignal(retUs, retJp, retJpOc, CONFIG, SECTOR_LABELS, CFull);
+    } catch (e) {
+        printFatal('シグナル計算中にエラーが発生しました', [String(e.message || e), 'npm run doctor でデータ状態を確認してください。']);
+    }
     const investment = calculateInvestment(signal.long, signal.short, 1000000);
 
     const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -155,4 +214,8 @@ async function main() {
     console.log('='.repeat(70));
 }
 
-main().catch(console.error);
+main().catch((e) => {
+    console.error('\n予期しないエラー:', e);
+    console.error('npm run doctor で環境を確認し、npm run setup でデータを揃えてから再試行してください。\n');
+    process.exit(1);
+});
