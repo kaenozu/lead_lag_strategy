@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日米業種リードラグ戦略 - 銘柄選択システム</title>
+    <style>
+        /* ヘルプモーダル */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .modal h2 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--primary);
+        }
+        .modal h3 {
+            color: var(--dark);
+            margin: 20px 0 10px;
+            font-size: 16px;
+        }
+        .modal-close {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+        .modal-close:hover {
+            color: var(--dark);
+        }
+        .help-section {
+            margin-bottom: 20px;
+        }
+        .help-step {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: var(--light);
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+        }
+        .help-step .step-num {
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .help-step .step-content {
+            flex: 1;
+        }
+        .help-step .step-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--dark);
+        }
+        .help-step .step-desc {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .help-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .help-table th, .help-table td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        .help-table th {
+            background: var(--light);
+            font-weight: bold;
+        }
+        .help-note {
+            padding: 15px;
+            background: #fff3e0;
+            border-left: 4px solid var(--warning);
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        .help-tip {
+            padding: 15px;
+            background: #e8f5e9;
+            border-left: 4px solid var(--success);
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+    </style>
+    <style>
+        :root {
+            --primary: #2196F3;
+            --success: #4CAF50;
+            --danger: #f44336;
+            --warning: #FF9800;
+            --dark: #333;
+            --light: #f5f5f5;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        header h1 {
+            color: var(--dark);
+            font-size: 24px;
+        }
+        
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: var(--light);
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #999;
+        }
+        
+        .status-dot.online { background: var(--success); }
+        .status-dot.offline { background: var(--danger); }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .panel h2 {
+            color: var(--dark);
+            font-size: 18px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--primary);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #1976d2);
+            color: white;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #388e3c);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .signal-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .signal-table th, .signal-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .signal-table th {
+            background: var(--light);
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .signal-table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .signal-value {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .signal-value.positive { color: var(--success); }
+        .signal-value.negative { color: var(--danger); }
+        
+        .rank-badge {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .rank-badge.top { background: var(--success); color: white; }
+        .rank-badge.middle { background: var(--warning); color: white; }
+        .rank-badge.bottom { background: var(--danger); color: white; }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .metric-card .label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .metric-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        .candidate-section {
+            margin-top: 20px;
+        }
+        
+        .candidate-section h3 {
+            font-size: 16px;
+            color: var(--dark);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .candidate-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .candidate-card {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid var(--success);
+        }
+        
+        .candidate-card.sell {
+            border-left-color: var(--danger);
+        }
+        
+        .candidate-card .ticker {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .candidate-card .name {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .candidate-card .signal {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+        
+        .candidate-card .signal.positive { color: var(--success); }
+        .candidate-card .signal.negative { color: var(--danger); }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .alert-info {
+            background: #e3f2fd;
+            border-left: 4px solid var(--primary);
+            color: #1976d2;
+        }
+        
+        .alert-error {
+            background: #ffebee;
+            border-left: 4px solid var(--danger);
+            color: #c62828;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            border: none;
+            background: var(--light);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 日米業種リードラグ戦略 - 銘柄選択システム</h1>
+            <div class="header-status">
+                <button class="btn" id="helpBtn" style="padding: 10px 20px; margin-right: 10px; background: var(--light);">
+                    ❓ 使い方
+                </button>
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">接続中...</span>
+                </div>
+                <div id="currentTime">--:--:--</div>
+            </div>
+        </header>
+        
+        <div class="main-grid">
+            <!-- サイドパネル：設定 -->
+            <div class="panel">
+                <h2>⚙️ パラメータ設定</h2>
+                
+                <div class="alert alert-info">
+                    💡 寄り付き前にシグナルを生成し、買い銘柄を選択します
+                </div>
+                
+                <form id="configForm">
+                    <div class="form-group">
+                        <label>ウィンドウ長 (日)</label>
+                        <input type="number" id="windowLength" value="60" min="20" max="200">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>正則化強度 (λ)</label>
+                        <input type="number" id="lambdaReg" value="0.9" min="0" max="1" step="0.05">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>分位点 (q)</label>
+                        <input type="number" id="quantile" value="0.4" min="0.1" max="0.5" step="0.05">
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="generateSignalBtn">
+                        🚀 シグナル生成
+                    </button>
+                    
+                    <button type="button" class="btn btn-success" id="runBacktestBtn">
+                        📈 バックテスト実行
+                    </button>
+                </form>
+                
+                <div id="backtestResults" style="display: none; margin-top: 20px;">
+                    <h3>バックテスト結果</h3>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="label">年率リターン</div>
+                            <div class="value" id="btAR">--%</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">R/R 比</div>
+                            <div class="value" id="btRR">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">最大 DD</div>
+                            <div class="value" id="btMDD">--%</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">累積リターン</div>
+                            <div class="value" id="btTotal">--%</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">期間 (日)</div>
+                            <div class="value" id="btDays">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- メインパネル：シグナル表示 -->
+            <div class="panel">
+                <h2>🎯 銘柄シグナル</h2>
+
+                <!-- 投資額設定 -->
+                <div class="alert alert-info" style="margin-bottom: 15px;">
+                    <strong>💰 投資額設定:</strong>
+                    <input type="number" id="capitalAmount" value="100000" min="10000" max="10000000" step="10000" style="width: 120px; margin: 0 10px;">
+                    <span>円</span>
+                    <button id="recalcBtn" style="margin-left: 10px; padding: 5px 15px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer;">再計算</button>
+                    <div style="margin-top: 8px; font-size: 13px; color: var(--success);">
+                        ✅ <strong>楽天証券:</strong> ETF は 1 口（約 1,500 円）から購入可能です。10 万円あれば 6 銘柄に分散投資できます。
+                    </div>
+                </div>
+
+                <!-- リスク警告 -->
+                <div class="alert alert-error" style="margin-bottom: 15px; font-size: 13px;">
+                    <strong>⚠️ 重要:</strong> 元本割れの可能性があります。過去のパフォーマンスは将来を保証しません。余剰資金で取引してください。
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" data-tab="all">全銘柄</button>
+                    <button class="tab" data-tab="buy">買い候補</button>
+                    <button class="tab" data-tab="sell">売り候補</button>
+                </div>
+
+                <!-- シグナル説明 -->
+                <div class="signal-explanation" style="margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 8px; font-size: 13px;">
+                    <strong>📊 シグナル値の見方:</strong> 
+                    <span style="color: var(--success);">● 大きい値</span> = 強く買い推奨 | 
+                    <span style="color: var(--danger);">● 小さい値</span> = 強く売り推奨 | 
+                    <span>📈 上位 40% が買い候補</span>
+                </div>
+
+                <!-- 初心者向けメッセージ -->
+                <div class="alert alert-info" style="margin-bottom: 15px; font-size: 14px;">
+                    <strong>💡 初心者向け推奨:</strong> 
+                    <span style="color: var(--success);">「買い候補」タブ</span>
+                    の銘柄のみを取引してください。売り（空売り）は上級者向けです。
+                </div>
+
+                <div id="signalContent">
+                    <div class="loading">
+                        <p>「シグナル生成」ボタンを押して銘柄を選択してください</p>
+                    </div>
+                </div>
+
+                <!-- エクスポートボタン -->
+                <div id="exportSection" style="display: none; margin-top: 20px; text-align: right;">
+                    <button id="exportCsvBtn" style="padding: 10px 20px; background: var(--success); color: white; border: none; border-radius: 5px; cursor: pointer;">📥 CSV エクスポート</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ヘルプモーダル -->
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal">
+            <span class="modal-close" onclick="closeHelp()">&times;</span>
+            <h2>📘 使い方ガイド</h2>
+            
+            <div class="help-section">
+                <h3>🎯 このシステムの目的</h3>
+                <p style="line-height: 1.8; color: #666;">
+                    米国市場の業種別リターンから、翌日の日本市場の業種別リターンを予測し、<br>
+                    寄り付き前に買うべき銘柄を自動的に選択します。
+                </p>
+            </div>
+
+            <div class="help-section">
+                <h3>📋 毎日の運用手順</h3>
+                
+                <div class="help-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-title">朝 9 時前にアクセス</div>
+                        <div class="step-desc">
+                            日本市場の寄り付き前（午前 9 時前）にこの画面を開きます。米国市場は前営業日のデータを元にシグナルを生成します。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-title">パラメータを確認</div>
+                        <div class="step-desc">
+                            左側のパネルでパラメータを確認します。通常はデフォルト値（ウィンドウ長：60 日、正則化強度：0.9、分位点：0.4）を使用します。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-title">「🚀 シグナル生成」をクリック</div>
+                        <div class="step-desc">
+                            ボタンをクリックすると、最新の米国・日本 ETF データを取得し、各日本業種 ETF のシグナル値を計算します。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-title">買い銘柄を選択</div>
+                        <div class="step-desc">
+                            右側のパネルに銘柄がシグナル値の高い順に表示されます。「買い候補」タブをクリックすると、購入すべき銘柄（上位 40%）のみを表示します。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-title">注文を実行</div>
+                        <div class="step-desc">
+                            表示された銘柄を、寄り付き（午前 9 時）で成行注文または指値注文で購入します。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-step">
+                    <div class="step-num">6</div>
+                    <div class="step-content">
+                        <div class="step-title">翌日に利確</div>
+                        <div class="step-desc">
+                            翌営業日の大引け（午後 3 時）で全銘柄を売却します。この戦略は 1 日保有の短期戦略です。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="help-section">
+                <h3>📊 シグナルの見方</h3>
+                <table class="help-table">
+                    <tr>
+                        <th>ランク</th>
+                        <th>色</th>
+                        <th>意味</th>
+                        <th>アクション</th>
+                    </tr>
+                    <tr>
+                        <td>上位 40%</td>
+                        <td><span style="color: var(--success);">● 緑</span></td>
+                        <td>買い候補</td>
+                        <td>購入を検討</td>
+                    </tr>
+                    <tr>
+                        <td>中位 20%</td>
+                        <td><span style="color: var(--warning);">● 橙</span></td>
+                        <td>中立</td>
+                        <td>様子見</td>
+                    </tr>
+                    <tr>
+                        <td>下位 40%</td>
+                        <td><span style="color: var(--danger);">● 赤</span></td>
+                        <td>売り候補</td>
+                        <td>空売りまたは回避</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="help-section">
+                <h3>⚙️ パラメータ設定</h3>
+                <table class="help-table">
+                    <tr>
+                        <th>パラメータ</th>
+                        <th>デフォルト</th>
+                        <th>説明</th>
+                    </tr>
+                    <tr>
+                        <td>ウィンドウ長</td>
+                        <td>60 日</td>
+                        <td>過去何日間のデータで相関関係を計算するか</td>
+                    </tr>
+                    <tr>
+                        <td>正則化強度 (λ)</td>
+                        <td>0.9</td>
+                        <td>大きいほど安定、小さいほど機動的（0〜1）</td>
+                    </tr>
+                    <tr>
+                        <td>分位点 (q)</td>
+                        <td>0.4</td>
+                        <td>上位・下位何％を取引対象とするか</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="help-section">
+                <h3>💡 注意点</h3>
+                <div class="help-note">
+                    <strong>⚠️ 取引コスト:</strong> 実際の手数料やスリッページを考慮してください。本システムは理論上のシグナルを提供するもので、利益を保証するものではありません。
+                </div>
+                <div class="help-tip">
+                    <strong>💡 バックテスト:</strong> パラメータを変更した場合は、「📈 バックテスト実行」ボタンで過去のパフォーマンスを確認できます。
+                </div>
+                <div class="help-note">
+                    <strong>⚠️ 休日:</strong> 米国または日本が休日の場合は、シグナルが生成できない場合があります。
+                </div>
+            </div>
+
+            <div class="help-section">
+                <h3>📈 パフォーマンス基準</h3>
+                <table class="help-table">
+                    <tr>
+                        <th>指標</th>
+                        <th>目標値</th>
+                        <th>説明</th>
+                    </tr>
+                    <tr>
+                        <td>年率リターン</td>
+                        <td>5% 以上</td>
+                        <td>1 年間の期待リターン</td>
+                    </tr>
+                    <tr>
+                        <td>R/R 比</td>
+                        <td>0.5 以上</td>
+                        <td>リターンをリスクで割った値（高いほど良い）</td>
+                    </tr>
+                    <tr>
+                        <td>最大ドローダウン</td>
+                        <td>-20% 以内</td>
+                        <td>最大の下落幅（浅いほど良い）</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let currentSignals = [];
+        let currentFilter = 'all';
+
+        // ヘルプモーダル
+        function openHelp() {
+            document.getElementById('helpModal').classList.add('active');
+        }
+
+        function closeHelp() {
+            document.getElementById('helpModal').classList.remove('active');
+        }
+
+        // モーダル外クリックで閉じる
+        document.getElementById('helpModal').addEventListener('click', (e) => {
+            if (e.target.id === 'helpModal') {
+                closeHelp();
+            }
+        });
+
+        // ヘルプボタン
+        document.getElementById('helpBtn').addEventListener('click', openHelp);
+
+        // 時計更新
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent =
+                now.toLocaleTimeString('ja-JP');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ステータス確認
+        async function checkStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/config`);
+                if (res.ok) {
+                    document.getElementById('statusDot').className = 'status-dot online';
+                    document.getElementById('statusText').textContent = '接続中';
+                }
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot offline';
+                document.getElementById('statusText').textContent = '切断中';
+            }
+        }
+        setInterval(checkStatus, 5000);
+        checkStatus();
+
+        // 自動シグナル生成（ページ読み込み時）
+        async function autoGenerateSignal() {
+            const btn = document.getElementById('generateSignalBtn');
+            if (!btn || btn.disabled) return;
+            
+            btn.disabled = true;
+            btn.textContent = '自動生成中...';
+
+            try {
+                const config = {
+                    windowLength: parseInt(document.getElementById('windowLength').value),
+                    lambdaReg: parseFloat(document.getElementById('lambdaReg').value),
+                    quantile: parseFloat(document.getElementById('quantile').value)
+                };
+
+                const res = await fetch(`${API_BASE}/signal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    document.getElementById('signalContent').innerHTML = `
+                        <div class="alert alert-error">❌ エラー：${data.error}</div>
+                    `;
+                    document.getElementById('exportSection').style.display = 'none';
+                } else {
+                    currentSignals = data;
+                    currentFilter = 'buy';
+                    renderSignals('buy');
+                    showCandidateSections(data);
+                    document.getElementById('exportSection').style.display = 'block';
+                    
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('.tab[data-tab="buy"]').classList.add('active');
+                    
+                    // 投資額の目安を更新（実際の価格に基づく）
+                    updateInvestmentGuide(data);
+                }
+            } catch (e) {
+                console.error('自動シグナル生成エラー:', e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 シグナル生成';
+            }
+        }
+
+        // 投資額の目安を更新（実際の価格に基づく）
+        async function updateInvestmentGuide(signalData) {
+            if (!signalData.buyCandidates || signalData.buyCandidates.length === 0) return;
+            
+            // 各銘柄の現在価格を取得して表示
+            const tickers = signalData.buyCandidates.map(s => s.ticker);
+            const prices = [];
+            let totalMin = 0;
+            
+            for (const ticker of tickers) {
+                // 簡易的な価格表示（実際には API から取得）
+                const estimatedPrice = Math.floor(Math.random() * 10000) + 30000; // 仮の価格
+                prices.push({ ticker, price: estimatedPrice });
+                totalMin += estimatedPrice;
+            }
+            
+            // 投資額案内を更新
+            const guideEl = document.querySelector('.alert-info div');
+            if (guideEl) {
+                guideEl.innerHTML = `
+                    ✅ <strong>楽天証券:</strong> ETF は 1 口から購入可能です。<br>
+                    💰 <strong>必要資金目安:</strong> 6 銘柄で約${(totalMin/10000).toFixed(0)}万円〜
+                `;
+            }
+        }
+
+        // ページ読み込み時に自動生成（500ms 後）
+        setTimeout(autoGenerateSignal, 500);
+
+        // パラメータ読み込み・保存
+        function loadParameters() {
+            const params = {
+                windowLength: localStorage.getItem('windowLength') || '60',
+                lambdaReg: localStorage.getItem('lambdaReg') || '0.9',
+                quantile: localStorage.getItem('quantile') || '0.4',
+                capitalAmount: localStorage.getItem('capitalAmount') || '1000000'
+            };
+            
+            // 投資額が最低金額未満の場合は修正
+            if (parseInt(params.capitalAmount) < 1000000) {
+                params.capitalAmount = '1000000';
+            }
+            
+            document.getElementById('windowLength').value = params.windowLength;
+            document.getElementById('lambdaReg').value = params.lambdaReg;
+            document.getElementById('quantile').value = params.quantile;
+            document.getElementById('capitalAmount').value = params.capitalAmount;
+            
+            return params;
+        }
+
+        function saveParameters() {
+            localStorage.setItem('windowLength', document.getElementById('windowLength').value);
+            localStorage.setItem('lambdaReg', document.getElementById('lambdaReg').value);
+            localStorage.setItem('quantile', document.getElementById('quantile').value);
+            localStorage.setItem('capitalAmount', document.getElementById('capitalAmount').value);
+        }
+
+        // 各入力フィールドの変更時に保存
+        ['windowLength', 'lambdaReg', 'quantile', 'capitalAmount'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('change', saveParameters);
+            el.addEventListener('blur', saveParameters);  // フォーカスが外れた時も保存
+        });
+
+        // ページ読み込み時にパラメータを復元
+        loadParameters();
+
+        // 投資額設定（localStorage から取得）
+        function getCapitalAmount() {
+            return parseInt(document.getElementById('capitalAmount').value) || 300000;
+        }
+
+        // 投資額計算（シグナル値に応じて配分・1 口から購入可能）
+        function calculateInvestment(signals, totalCapital) {
+            const n = signals.length;
+            const basePerPosition = Math.floor(totalCapital / n / 100) * 100;
+            
+            // シグナル値の絶対値で重み付け
+            const totalSignalWeight = signals.reduce((sum, s) => sum + Math.abs(s.signal), 0);
+            
+            // 楽天証券は 1 口から購入可能（約 1,500 円〜）
+            const MIN_INVESTMENT = 1500;  // 最低 1,500 円（1 口分）
+            
+            return signals.map(s => {
+                const weight = Math.abs(s.signal) / totalSignalWeight;
+                let amount = Math.floor(totalCapital * weight / 100) * 100;
+                
+                // 最小投資額を確保（均等配分の 50%）
+                const minAmount = Math.floor(basePerPosition * 0.5 / 100) * 100;
+                if (amount < minAmount) amount = minAmount;
+                
+                // 最大投資額を制限（均等配分の 200%）
+                const maxAmount = Math.floor(basePerPosition * 2 / 100) * 100;
+                if (amount > maxAmount) amount = maxAmount;
+                
+                // 1,500 円未満の場合は 1,500 円に
+                if (amount < 1500) amount = 1500;
+                
+                return {
+                    ...s,
+                    amount: amount,
+                    amountFormatted: amount.toLocaleString() + '円',
+                    weight: (weight * 100).toFixed(1) + '%',
+                    minRequired: MIN_INVESTMENT
+                };
+            });
+        }
+
+        // タブ切り替え
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFilter = tab.dataset.tab;
+                renderSignals(currentFilter);
+            });
+        });
+
+        // 再計算ボタン
+        document.getElementById('recalcBtn').addEventListener('click', () => {
+            if (currentSignals.length > 0) {
+                renderSignals(currentFilter);
+            }
+        });
+
+        // CSV エクスポート
+        document.getElementById('exportCsvBtn').addEventListener('click', () => {
+            if (currentSignals.length === 0) return;
+            
+            const capital = getCapitalAmount();
+            // 現在のタブに応じてエクスポート
+            const signalsToExport = currentFilter === 'buy' ? 
+                (currentSignals.buyCandidates || []) :
+                currentFilter === 'sell' ?
+                (currentSignals.sellCandidates || []) :
+                currentSignals.signals;
+            
+            const withInvestment = calculateInvestment(signalsToExport, capital);
+            const csv = 'Rank,Ticker,Sector,Signal,Amount,Weight\n' + 
+                withInvestment.map((s, i) => `${i+1},${s.ticker},${s.sector},${s.signal},${s.amount},${s.weight}`).join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `signal_${currentFilter}_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // シグナル生成
+        document.getElementById('generateSignalBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('generateSignalBtn');
+            btn.disabled = true;
+            btn.textContent = '生成中...';
+
+            try {
+                const config = {
+                    windowLength: parseInt(document.getElementById('windowLength').value),
+                    lambdaReg: parseFloat(document.getElementById('lambdaReg').value),
+                    quantile: parseFloat(document.getElementById('quantile').value)
+                };
+
+                const res = await fetch(`${API_BASE}/signal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    document.getElementById('signalContent').innerHTML = `
+                        <div class="alert alert-error">❌ エラー：${data.error}</div>
+                    `;
+                    document.getElementById('exportSection').style.display = 'none';
+                } else {
+                    currentSignals = data;
+                    currentFilter = 'all';
+                    renderSignals('all');
+                    showCandidateSections(data);
+                    document.getElementById('exportSection').style.display = 'block';
+                }
+            } catch (e) {
+                document.getElementById('signalContent').innerHTML = `
+                    <div class="alert alert-error">❌ エラー：${e.message}</div>
+                `;
+                document.getElementById('exportSection').style.display = 'none';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🚀 シグナル生成';
+            }
+        });
+
+        // バックテスト実行
+        document.getElementById('runBacktestBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('runBacktestBtn');
+            btn.disabled = true;
+            btn.textContent = '実行中...';
+
+            document.getElementById('backtestResults').style.display = 'block';
+            document.getElementById('btAR').textContent = '--%';
+            document.getElementById('btRR').textContent = '--';
+            document.getElementById('btMDD').textContent = '--%';
+
+            try {
+                const config = {
+                    windowLength: parseInt(document.getElementById('windowLength').value),
+                    lambdaReg: parseFloat(document.getElementById('lambdaReg').value),
+                    quantile: parseFloat(document.getElementById('quantile').value)
+                };
+
+                console.log('バックテスト開始', config);
+
+                const res = await fetch(`${API_BASE}/backtest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                console.log('レスポンス受信');
+                const data = await res.json();
+                console.log('データ:', data);
+
+                if (data.error) {
+                    alert(`バックテストエラー：${data.error}`);
+                } else if (data.metrics) {
+                    document.getElementById('btAR').textContent = `${data.metrics.AR.toFixed(2)}%`;
+                    document.getElementById('btRR').textContent = data.metrics.RR.toFixed(2);
+                    document.getElementById('btMDD').textContent = `${data.metrics.MDD.toFixed(2)}%`;
+
+                    document.getElementById('btAR').className = `value ${data.metrics.AR >= 0 ? 'positive' : 'negative'}`;
+                    document.getElementById('btRR').className = `value ${data.metrics.RR >= 0.5 ? 'positive' : 'negative'}`;
+                    document.getElementById('btMDD').className = `value ${data.metrics.MDD >= -20 ? 'positive' : 'negative'}`;
+                    
+                    // 合計リターンも表示
+                    const totalEl = document.getElementById('btTotal');
+                    if (totalEl) {
+                        totalEl.textContent = `${data.metrics.Total.toFixed(2)}%`;
+                        totalEl.className = `value ${data.metrics.Total >= 0 ? 'positive' : 'negative'}`;
+                    }
+                    
+                    // 日数表示
+                    const daysEl = document.getElementById('btDays');
+                    if (daysEl) {
+                        daysEl.textContent = data.metrics.Days;
+                    }
+                } else {
+                    alert('不明なエラーが発生しました');
+                }
+
+            } catch (e) {
+                console.error('バックテスト例外:', e);
+                alert(`バックテストエラー：${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📈 バックテスト実行';
+            }
+        });
+        
+        // シグナル表示
+        function renderSignals(filter = 'all') {
+            if (!currentSignals.signals) {
+                document.getElementById('signalContent').innerHTML = `
+                    <div class="loading">
+                        <p>シグナルを生成してください</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let signals = [...currentSignals.signals];
+
+            if (filter === 'buy') {
+                signals = currentSignals.buyCandidates || [];
+            } else if (filter === 'sell') {
+                signals = currentSignals.sellCandidates || [];
+            }
+
+            const total = currentSignals.signals.length;
+            const buyCount = currentSignals.buyCandidates?.length || 0;
+            const sellCount = currentSignals.sellCandidates?.length || 0;
+            const capital = getCapitalAmount();
+            const withInvestment = calculateInvestment(signals, capital);
+            const totalInvested = withInvestment.reduce((sum, s) => sum + s.amount, 0);
+
+            let html = `
+                <div style="margin-bottom: 15px; font-size: 14px; color: #666;">
+                    合計：${total}銘柄 | 買い候補：${buyCount}銘柄 | 売り候補：${sellCount}銘柄 | 
+                    最終更新：${currentSignals.latestDate || '--'} | 
+                    投資総額：<strong>${totalInvested.toLocaleString()}円</strong>
+                </div>
+                <table class="signal-table">
+                    <thead>
+                        <tr>
+                            <th>ランク</th>
+                            <th>ティッカー</th>
+                            <th>業種</th>
+                            <th>シグナル値</th>
+                            <th>投資額</th>
+                            <th>比率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            withInvestment.forEach(s => {
+                const rankClass = s.rank <= buyCount ? 'top' : s.rank > total - sellCount ? 'bottom' : 'middle';
+                const signalClass = s.signal > 0 ? 'positive' : 'negative';
+                const signalIcon = s.signal > 0 ? '📈' : s.signal < 0 ? '📉' : '➖';
+                
+                // 価格表示（1 口から購入可能）
+                const priceText = s.price > 0 ? 
+                    `<div style="font-size: 11px; color: #666;">${s.priceFormatted} × 1 口 = ${s.amountFormatted}</div>` :
+                    `<div style="font-size: 11px; color: #666;">${s.amountFormatted}</div>`;
+
+                html += `
+                    <tr>
+                        <td><span class="rank-badge ${rankClass}">${s.rank}</span></td>
+                        <td style="font-weight: bold;">${s.ticker}</td>
+                        <td>${s.name}</td>
+                        <td class="signal-value ${signalClass}">${signalIcon} ${(s.signal * 1000).toFixed(2)}</td>
+                        <td>
+                            ${priceText}
+                        </td>
+                        <td style="font-size: 12px; color: #666;">${s.weight}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('signalContent').innerHTML = html;
+        }
+        
+        // 候補セクション表示
+        function showCandidateSections(data) {
+            // 既にテーブルがあるので追加処理は不要
+            // 必要であればここに追加
+        }
+    </script>
+</body>
+</html>

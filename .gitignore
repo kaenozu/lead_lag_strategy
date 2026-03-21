@@ -1,0 +1,34 @@
+# 依存関係
+node_modules/
+package-lock.json
+
+# 環境設定
+.env
+.env.local
+
+# ログファイル
+*.log
+server.log
+
+# 結果ファイル（必要に応じて）
+results/*.csv
+results/*.json
+!results/.gitkeep
+
+# データファイル（必要に応じて）
+data/*.csv
+!data/.gitkeep
+
+# OS ファイル
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ビルド成果物
+dist/
+build/

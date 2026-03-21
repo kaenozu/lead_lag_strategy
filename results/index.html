@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日米業種リードラグ戦略 - バックテスト結果</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        h1 { color: #333; text-align: center; }
+        h2 { color: #555; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 12px; text-align: right; border-bottom: 1px solid #ddd; }
+        th { background: #4CAF50; color: white; text-align: center; }
+        tr:hover { background: #f5f5f5; }
+        .best { background: #e8f5e9 !important; font-weight: bold; }
+        .metric { display: inline-block; margin: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; min-width: 120px; text-align: center; }
+        .metric-value { font-size: 24px; font-weight: bold; color: #1976d2; }
+        .metric-label { font-size: 12px; color: #666; }
+        .positive { color: #4CAF50; }
+        .negative { color: #f44336; }
+        canvas { max-height: 400px; }
+    </style>
+</head>
+<body>
+    <h1>📈 日米業種リードラグ戦略 バックテスト結果</h1>
+    
+    <div class="card">
+        <h2>戦略比較サマリー</h2>
+        <table id="summaryTable">
+            <thead>
+                <tr><th>戦略</th><th>年率リターン</th><th>年率リスク</th><th>R/R 比</th><th>最大ドローダウン</th><th>累積リターン</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    
+    <div class="card">
+        <h2>最適パラメータ</h2>
+        <div id="params"></div>
+    </div>
+    
+    <div class="card">
+        <h2>累積リターン推移</h2>
+        <canvas id="cumulativeChart"></canvas>
+    </div>
+    
+    <div class="card">
+        <h2>考察</h2>
+        <div id="analysis"></div>
+    </div>
+
+    <script>
+        // データ読み込み
+        const summaryData = `Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)
+MOM,1.4008,10.1059,0.1386,-20.1239,6.2580
+PCA PLAIN,2.8071,9.7441,0.2881,-16.0627,17.2324
+PCA SUB,6.9255,8.3339,0.8310,-20.6260,56.5880
+DOUBLE,0.2939,16.3462,0.0180,-38.1886,-6.8339`;
+
+        const paramsData = `Parameter,Value
+windowLength,60
+lambdaReg,0.9
+quantile,0.4
+nFactors,3`;
+
+        // パース関数
+        function parseCSV(csv) {
+            const lines = csv.trim().split('\n');
+            const headers = lines[0].split(',');
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = values[i]);
+                return obj;
+            });
+        }
+
+        const summary = parseCSV(summaryData);
+        const params = parseCSV(paramsData);
+
+        // テーブル描画
+        const tbody = document.querySelector('#summaryTable tbody');
+        let bestRR = Math.max(...summary.map(s => parseFloat(s['R/R'])));
+        
+        summary.forEach(s => {
+            const tr = document.createElement('tr');
+            if (parseFloat(s['R/R']) === bestRR) tr.className = 'best';
+            
+            const ar = parseFloat(s['AR (%)']);
+            const mdd = parseFloat(s['MDD (%)']);
+            const total = parseFloat(s['Total (%)']);
+            
+            tr.innerHTML = `
+                <td style="text-align: left; font-weight: bold;">${s.Strategy}</td>
+                <td class="${ar >= 0 ? 'positive' : 'negative'}">${ar > 0 ? '+' : ''}${ar.toFixed(2)}%</td>
+                <td>${parseFloat(s['RISK (%)']).toFixed(2)}%</td>
+                <td class="${parseFloat(s['R/R']) >= 0.5 ? 'positive' : ''}">${parseFloat(s['R/R']).toFixed(2)}</td>
+                <td class="negative">${mdd.toFixed(2)}%</td>
+                <td class="${total >= 0 ? 'positive' : 'negative'}">${total > 0 ? '+' : ''}${total.toFixed(2)}%</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // パラメータ表示
+        const paramsDiv = document.getElementById('params');
+        params.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'metric';
+            div.innerHTML = `<div class="metric-value">${p.Value}</div><div class="metric-label">${p.Parameter}</div>`;
+            paramsDiv.appendChild(div);
+        });
+
+        // 累積リターンデータ読み込み
+        async function loadCumulativeData() {
+            const strategies = ['mom', 'pca_plain', 'pca_sub', 'double'];
+            const data = {};
+            
+            for (const strat of strategies) {
+                try {
+                    const response = await fetch(`cumulative_${strat}.csv`);
+                    const csv = await response.text();
+                    const rows = parseCSV(csv);
+                    data[strat] = rows.map(r => ({
+                        date: r.Date,
+                        value: (parseFloat(r.Cumulative) - 1) * 100
+                    }));
+                } catch (e) {
+                    console.warn(`${strat} のデータ読み込み失敗`);
+                }
+            }
+            
+            return data;
+        }
+
+        // チャート描画
+        async function drawChart() {
+            const cumData = await loadCumulativeData();
+            const ctx = document.getElementById('cumulativeChart').getContext('2d');
+            
+            const allDates = new Set();
+            Object.values(cumData).forEach(d => d.forEach(p => allDates.add(p.date)));
+            const dates = [...allDates].sort();
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates.filter((_, i) => i % 50 === 0),
+                    datasets: [
+                        { label: 'MOM', data: cumData.mom?.filter((_, i) => i % 50 === 0).map(d => d.value) || [], borderColor: '#2196F3', tension: 0.1, fill: false },
+                        { label: 'PCA PLAIN', data: cumData.pca_plain?.filter((_, i) => i % 50 === 0).map(d => d.value) || [], borderColor: '#9C27B0', tension: 0.1, fill: false },
+                        { label: 'PCA SUB', data: cumData.pca_sub?.filter((_, i) => i % 50 === 0).map(d => d.value) || [], borderColor: '#4CAF50', tension: 0.1, fill: false },
+                        { label: 'DOUBLE', data: cumData.double?.filter((_, i) => i % 50 === 0).map(d => d.value) || [], borderColor: '#FF9800', tension: 0.1, fill: false },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        title: { display: true, text: '累積リターン推移（%）' },
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            title: { display: true, text: '累積リターン (%)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 考察
+        const bestStrat = summary.reduce((a, b) => parseFloat(a['R/R']) > parseFloat(b['R/R']) ? a : b);
+        const analysisDiv = document.getElementById('analysis');
+        analysisDiv.innerHTML = `
+            <ul>
+                <li><strong>最良戦略:</strong> <span class="positive">${bestStrat.Strategy}</span> (R/R = ${parseFloat(bestStrat['R/R']).toFixed(2)})</li>
+                <li><strong>パラメータ最適化の効果:</strong> λ=0.9（強い正則化）が選択され、推定誤差を抑制</li>
+                <li><strong>PCA SUB の優位性:</strong> 単純モメンタム（R/R=0.14）を大きく上回る R/R=0.83 を達成</li>
+                <li><strong>リスク特性:</strong> PCA SUB はリスク 8.33% と最も低く、効率的なポートフォリオ</li>
+                <li><strong>累積リターン:</strong> 2018-2025 年で +56.59%（年率 6.93%）</li>
+                <li><strong>改善余地:</strong> 論文結果（AR=23.79%, R/R=2.22）には及ばず、さらなる改良が必要</li>
+            </ul>
+            <h3>次のステップ</h3>
+            <ul>
+                <li>ファクターモデル（Fama-French 3/4 ファクター）によるリスク調整アルファの計測</li>
+                <li>取引コスト（スリッページ、手数料）の考慮</li>
+                <li>サブサンプル分析（期間による安定性検証）</li>
+                <li>業種ラベルの再検討（より詳細な分類）</li>
+            </ul>
+        `;
+
+        drawChart();
+    </script>
+</body>
+</html>
