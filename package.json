@@ -4,7 +4,7 @@
   "description": "",
   "main": "backtest.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test_unit.js && node --check server.js && node --check backtest_improved.js && node --check generate_signal.js && node --check analysis.js"
   },
   "keywords": [],
   "author": "",

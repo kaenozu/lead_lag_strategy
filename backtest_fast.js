@@ -192,9 +192,10 @@ function buildReturnMatrices(usData, jpData) {
         jpOCReturns[t] = oc;
     }
 
-    const usMap = new Map(), jpMap = new Map();
+    const usMap = new Map(), jpMap = new Map(), jpOCMap = new Map();
     for (const t in usCCReturns) for (const r of usCCReturns[t]) { if (!usMap.has(r.date)) usMap.set(r.date, {}); usMap.get(r.date)[t] = r.return; }
     for (const t in jpCCReturns) for (const r of jpCCReturns[t]) { if (!jpMap.has(r.date)) jpMap.set(r.date, {}); jpMap.get(r.date)[t] = r.return; }
+    for (const t in jpOCReturns) for (const r of jpOCReturns[t]) { if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {}); jpOCMap.get(r.date)[t] = r.return; }
 
     const usDates = new Set([...usMap.keys()].sort()), jpDates = new Set([...jpMap.keys()].sort());
     const commonDates = [...usDates].filter(d => jpDates.has(d)).sort();
@@ -207,11 +208,12 @@ function buildReturnMatrices(usData, jpData) {
         const usDate = filteredDates[i-1], jpDate = filteredDates[i];
         const usRow = Object.fromEntries(US_ETF_TICKERS.map(t => [t, usMap.get(usDate)?.[t] ?? 0]));
         const jpRow = Object.fromEntries(JP_ETF_TICKERS.map(t => [t, jpMap.get(jpDate)?.[t] ?? 0]));
-        const jpOcRow = Object.fromEntries(JP_ETF_TICKERS.map(t => [t, jpMap.get(jpDate)?.[t] ?? 0]));
+        const jpOcRow = Object.fromEntries(JP_ETF_TICKERS.map(t => [t, jpOCMap.get(jpDate)?.[t]]));
 
         let valid = true;
         for (const t of US_ETF_TICKERS) if (usRow[t] === undefined) valid = false;
         for (const t of JP_ETF_TICKERS) if (jpRow[t] === undefined) valid = false;
+        for (const t of JP_ETF_TICKERS) if (jpOcRow[t] === undefined) valid = false;
 
         if (valid) {
             returnsUs.push({ values: US_ETF_TICKERS.map(t => usRow[t]), date: usDate });

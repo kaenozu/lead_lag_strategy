@@ -7,8 +7,8 @@ const express = require('express');
 const cors = require('cors');
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
-const path = require('path');
-const fs = require('fs');
+const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES, SECTOR_LABELS } = require('./sector_constants');
 
 const app = express();
 const PORT = 3000;
@@ -26,193 +26,28 @@ const CONFIG = {
     warmupPeriod: 60,
 };
 
-// 日本セクター ETF
-const JP_ETF_TICKERS = [
-    '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
-    '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
-    '1631.T', '1632.T', '1633.T'
-];
-
-const JP_ETF_NAMES = {
-    '1617.T': '食品', '1618.T': 'エネルギー資源', '1619.T': '建設・資材',
-    '1620.T': '素材・化学', '1621.T': '医薬品', '1622.T': '自動車・輸送機',
-    '1623.T': '鉄鋼・非鉄', '1624.T': '機械', '1625.T': '電機・精密',
-    '1626.T': '情報通信', '1627.T': '電力・ガス', '1628.T': '運輸・物流',
-    '1629.T': '商社・卸売', '1630.T': '小売', '1631.T': '銀行',
-    '1632.T': '証券・商品', '1633.T': '保険'
-};
-
-// 米国セクター ETF
-const US_ETF_TICKERS = [
-    'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'
-];
-
-// セクターラベル
-const SECTOR_LABELS = {
-    'US_XLB': 'cyclical', 'US_XLE': 'cyclical', 'US_XLF': 'cyclical', 'US_XLRE': 'cyclical',
-    'US_XLK': 'defensive', 'US_XLP': 'defensive', 'US_XLU': 'defensive', 'US_XLV': 'defensive',
-    'US_XLI': 'cyclical', 'US_XLC': 'neutral', 'US_XLY': 'cyclical',
-    'JP_1618.T': 'cyclical', 'JP_1625.T': 'cyclical', 'JP_1629.T': 'cyclical', 'JP_1631.T': 'cyclical',
-    'JP_1617.T': 'defensive', 'JP_1621.T': 'defensive', 'JP_1627.T': 'defensive', 'JP_1630.T': 'defensive',
-    'JP_1619.T': 'cyclical', 'JP_1620.T': 'cyclical', 'JP_1622.T': 'cyclical', 'JP_1623.T': 'cyclical',
-    'JP_1624.T': 'cyclical', 'JP_1626.T': 'neutral', 'JP_1628.T': 'cyclical', 'JP_1632.T': 'cyclical',
-    'JP_1633.T': 'defensive',
-};
-
-// 線形代数関数
-function transpose(m) { return m[0].map((_, i) => m.map(r => r[i])); }
-function dotProduct(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
-function norm(v) { return Math.sqrt(v.reduce((s, x) => s + x * x, 0)); }
-function normalize(v) { const n = norm(v); return n > 1e-10 ? v.map(x => x / n) : v; }
-function diag(m) { return m.map((r, i) => r[i]); }
-function makeDiag(v) {
-    const n = v.length;
-    const r = new Array(n).fill(0).map(() => new Array(n).fill(0));
-    for (let i = 0; i < n; i++) r[i][i] = v[i];
-    return r;
+function parseIntFinite(v, fallback) {
+    const x = parseInt(v, 10);
+    return Number.isFinite(x) ? x : fallback;
 }
 
-function matmul(A, B) {
-    const rowsA = A.length, colsA = A[0].length, colsB = B[0].length;
-    const result = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0));
-    for (let i = 0; i < rowsA; i++)
-        for (let j = 0; j < colsB; j++)
-            for (let k = 0; k < colsA; k++)
-                result[i][j] += A[i][k] * B[k][j];
-    return result;
+function parseFloatFinite(v, fallback) {
+    const x = parseFloat(v);
+    return Number.isFinite(x) ? x : fallback;
 }
 
-function eigenDecposition(matrix, k = 3) {
-    const n = matrix.length;
-    const eigenvalues = [], eigenvectors = [];
-    let A = matrix.map(r => [...r]);
-    
-    for (let e = 0; e < k; e++) {
-        let v = normalize(new Array(n).fill(0).map((_, i) => Math.random()));
-        for (let iter = 0; iter < 500; iter++) {
-            let vNew = new Array(n).fill(0);
-            for (let i = 0; i < n; i++)
-                for (let j = 0; j < n; j++) vNew[i] += A[i][j] * v[j];
-            const nn = norm(vNew);
-            if (nn < 1e-10) break;
-            v = normalize(vNew);
-        }
-        const Av = new Array(n).fill(0);
-        for (let i = 0; i < n; i++)
-            for (let j = 0; j < n; j++) Av[i] += A[i][j] * v[j];
-        eigenvalues.push(dotProduct(v, Av));
-        eigenvectors.push(v);
-        for (let i = 0; i < n; i++)
-            for (let j = 0; j < n; j++)
-                A[i][j] -= eigenvalues[e] * v[i] * v[j];
-    }
-    return { eigenvalues, eigenvectors };
-}
+let lastHeavyApiAt = 0;
+const HEAVY_API_MIN_MS = 2500;
 
-function correlationMatrix(data) {
-    const n = data.length, m = data[0].length;
-    const means = new Array(m).fill(0);
-    for (let j = 0; j < m; j++) {
-        for (let i = 0; i < n; i++) means[j] += data[i][j];
-        means[j] /= n;
+function allowHeavyApi(res) {
+    const now = Date.now();
+    if (now - lastHeavyApiAt < HEAVY_API_MIN_MS) {
+        const wait = Math.ceil((HEAVY_API_MIN_MS - (now - lastHeavyApiAt)) / 1000);
+        res.status(429).json({ error: 'リクエストが多すぎます。しばらく待ってから再試行してください。', retryAfterSec: wait });
+        return false;
     }
-    const stds = new Array(m).fill(0);
-    for (let j = 0; j < m; j++) {
-        let ss = 0;
-        for (let i = 0; i < n; i++) { const d = data[i][j] - means[j]; ss += d * d; }
-        stds[j] = Math.sqrt(ss / n);
-    }
-    const std = new Array(n).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < n; i++)
-        for (let j = 0; j < m; j++)
-            std[i][j] = stds[j] > 1e-10 ? (data[i][j] - means[j]) / stds[j] : 0;
-    
-    const corr = new Array(m).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < m; i++)
-        for (let j = 0; j < m; j++) {
-            let s = 0;
-            for (let k = 0; k < n; k++) s += std[k][i] * std[k][j];
-            corr[i][j] = s / n;
-        }
-    return corr;
-}
-
-// PCA クラス
-class SubspacePCA {
-    constructor(config) { this.config = config; this.C0 = null; }
-    
-    buildPriorSpace(nUs, nJp, labels, CFull) {
-        const N = nUs + nJp;
-        const keys = Object.keys(labels);
-        
-        let v1 = normalize(new Array(N).fill(1));
-        let v2 = new Array(N).fill(0);
-        for (let i = 0; i < nUs; i++) v2[i] = 1;
-        for (let i = nUs; i < N; i++) v2[i] = -1;
-        v2 = normalize(v2.map((x, i) => x - dotProduct(v2, v1) * v1[i]));
-        
-        let v3 = new Array(N).fill(0);
-        for (let i = 0; i < N; i++) {
-            if (labels[keys[i]] === 'cyclical') v3[i] = 1;
-            else if (labels[keys[i]] === 'defensive') v3[i] = -1;
-        }
-        v3 = v3.map((x, i) => x - dotProduct(v3, v1) * v1[i] - dotProduct(v3, v2) * v2[i]);
-        v3 = normalize(v3);
-        
-        const V0 = new Array(N).fill(0).map((_, i) => [v1[i], v2[i], v3[i]]);
-        const CFullV0 = matmul(CFull, V0);
-        const D0 = diag(matmul(transpose(V0), CFullV0));
-        const C0Raw = matmul(matmul(V0, makeDiag(D0)), transpose(V0));
-        const delta = diag(C0Raw);
-        const inv = delta.map(x => 1 / Math.sqrt(Math.abs(x) + 1e-10));
-        let C0 = matmul(matmul(makeDiag(inv), C0Raw), makeDiag(inv));
-        for (let i = 0; i < N; i++) C0[i][i] = 1;
-        this.C0 = C0;
-    }
-    
-    compute(returns, labels, CFull) {
-        const nUs = Object.keys(labels).filter(k => k.startsWith('US_')).length;
-        const nJp = Object.keys(labels).filter(k => k.startsWith('JP_')).length;
-        if (!this.C0) this.buildPriorSpace(nUs, nJp, labels, CFull);
-        
-        const CT = correlationMatrix(returns);
-        const N = CT.length;
-        const CReg = new Array(N).fill(0).map(() => new Array(N).fill(0));
-        for (let i = 0; i < N; i++)
-            for (let j = 0; j < N; j++)
-                CReg[i][j] = (1 - this.config.lambdaReg) * CT[i][j] + this.config.lambdaReg * this.C0[i][j];
-        
-        const { eigenvectors } = eigenDecposition(CReg, this.config.nFactors);
-        return transpose(eigenvectors);
-    }
-}
-
-class LeadLagSignal {
-    constructor(config) { this.config = config; this.pca = new SubspacePCA(config); }
-    
-    compute(retUs, retJp, retUsLatest, labels, CFull) {
-        const nSamples = retUs.length, nUs = retUs[0].length, nJp = retJp[0].length;
-        const combined = retUs.map((r, i) => [...r, ...retJp[i]]);
-        const N = nUs + nJp;
-        
-        const mu = new Array(N).fill(0);
-        const sigma = new Array(N).fill(0);
-        for (let j = 0; j < N; j++) {
-            for (let i = 0; i < nSamples; i++) mu[j] += combined[i][j];
-            mu[j] /= nSamples;
-            let ss = 0;
-            for (let i = 0; i < nSamples; i++) { const d = combined[i][j] - mu[j]; ss += d * d; }
-            sigma[j] = Math.sqrt(ss / nSamples) + 1e-10;
-        }
-        
-        const std = combined.map(r => r.map((x, j) => (x - mu[j]) / sigma[j]));
-        const VK = this.pca.compute(std, labels, CFull);
-        
-        const VUs = VK.slice(0, nUs), VJp = VK.slice(nUs);
-        const zLatest = retUsLatest.map((x, j) => (x - mu[j]) / sigma[j]);
-        const fT = VUs.map(v => dotProduct(v, zLatest));
-        return VJp.map(v => dotProduct(v, fT));
-    }
+    lastHeavyApiAt = now;
+    return true;
 }
 
 // データ取得
@@ -257,13 +92,15 @@ function computeReturns(ohlc, type = 'cc') {
 // バックテスト API - シンプル版
 app.post('/api/backtest', async (req, res) => {
     try {
+        if (!allowHeavyApi(res)) return;
         const { windowLength, lambdaReg, quantile } = req.body;
+        const wl = parseIntFinite(windowLength, CONFIG.windowLength);
         const config = {
-            windowLength: parseInt(windowLength) || CONFIG.windowLength,
+            windowLength: wl,
             nFactors: CONFIG.nFactors,
-            lambdaReg: parseFloat(lambdaReg) !== undefined ? parseFloat(lambdaReg) : CONFIG.lambdaReg,
-            quantile: parseFloat(quantile) || CONFIG.quantile,
-            warmupPeriod: parseInt(windowLength) || CONFIG.windowLength,
+            lambdaReg: parseFloatFinite(lambdaReg, CONFIG.lambdaReg),
+            quantile: parseFloatFinite(quantile, CONFIG.quantile),
+            warmupPeriod: wl,
         };
 
         console.log('バックテスト実行中...', config);
@@ -421,12 +258,13 @@ app.post('/api/backtest', async (req, res) => {
 // シグナル生成 API
 app.post('/api/signal', async (req, res) => {
     try {
+        if (!allowHeavyApi(res)) return;
         const { windowLength, lambdaReg, quantile } = req.body;
         const config = {
-            windowLength: windowLength || CONFIG.windowLength,
+            windowLength: parseIntFinite(windowLength, CONFIG.windowLength),
             nFactors: CONFIG.nFactors,
-            lambdaReg: lambdaReg !== undefined ? lambdaReg : CONFIG.lambdaReg,
-            quantile: quantile || CONFIG.quantile,
+            lambdaReg: parseFloatFinite(lambdaReg, CONFIG.lambdaReg),
+            quantile: parseFloatFinite(quantile, CONFIG.quantile),
         };
         
         console.log('シグナル生成中...', config);
@@ -548,7 +386,22 @@ app.get('/api/config', (req, res) => {
 
 // 設定更新 API
 app.post('/api/config', (req, res) => {
-    Object.assign(CONFIG, req.body);
+    if (process.env.ALLOW_CONFIG_MUTATION !== '1') {
+        return res.status(403).json({
+            error: '設定の書き換えは無効です。ローカルで有効にする場合は環境変数 ALLOW_CONFIG_MUTATION=1 を設定してください。',
+        });
+    }
+    const allowed = ['windowLength', 'nFactors', 'lambdaReg', 'quantile', 'warmupPeriod'];
+    for (const k of allowed) {
+        if (req.body[k] === undefined) continue;
+        if (k === 'nFactors' || k === 'windowLength' || k === 'warmupPeriod') {
+            const x = parseInt(req.body[k], 10);
+            if (Number.isFinite(x)) CONFIG[k] = x;
+        } else {
+            const x = parseFloat(req.body[k]);
+            if (Number.isFinite(x)) CONFIG[k] = x;
+        }
+    }
     res.json(CONFIG);
 });
 
@@ -558,5 +411,9 @@ app.listen(PORT, () => {
     console.log(`  POST /api/backtest - バックテスト実行`);
     console.log(`  POST /api/signal - シグナル生成`);
     console.log(`  GET  /api/config - 設定取得`);
-    console.log(`  POST /api/config - 設定更新`);
+    if (process.env.ALLOW_CONFIG_MUTATION === '1') {
+        console.log(`  POST /api/config - 設定更新（ALLOW_CONFIG_MUTATION=1）`);
+    } else {
+        console.log(`  POST /api/config - 無効（書き換えには ALLOW_CONFIG_MUTATION=1 が必要）`);
+    }
 });

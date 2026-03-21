@@ -47,7 +47,9 @@ function eigenDecposition(matrix, k = 3) {
             for (let j = 0; j < n; j++) for (let l = 0; l < n; l++) vNew[j] += A[j][l] * v[l];
             const nn = norm(vNew); if (nn < 1e-10) break; v = vNew.map(x => x / nn);
         }
-        const Av = v.map((_, j) => A.reduce((s, row) => s + row[j] * v[j], 0));
+        const Av = new Array(n).fill(0);
+        for (let ii = 0; ii < n; ii++)
+            for (let jj = 0; jj < n; jj++) Av[ii] += A[ii][jj] * v[jj];
         eigenvalues.push(dotProduct(v, Av)); eigenvectors.push(v);
         for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) A[i][j] -= eigenvalues[e] * v[i] * v[j];
     }
@@ -162,9 +164,10 @@ function buildMatrices(usData, jpData) {
         }
         jpRet[t] = cc; jpRetOc[t] = oc;
     }
-    const usMap = new Map(), jpMap = new Map();
+    const usMap = new Map(), jpMap = new Map(), jpOCMap = new Map();
     for (const t in usRet) for (const r of usRet[t]) { if (!usMap.has(r.date)) usMap.set(r.date, {}); usMap.get(r.date)[t] = r.return; }
     for (const t in jpRet) for (const r of jpRet[t]) { if (!jpMap.has(r.date)) jpMap.set(r.date, {}); jpMap.get(r.date)[t] = r.return; }
+    for (const t in jpRetOc) for (const r of jpRetOc[t]) { if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {}); jpOCMap.get(r.date)[t] = r.return; }
     const usDates = new Set([...usMap.keys()].sort()), jpDates = new Set([...jpMap.keys()].sort());
     const common = [...usDates].filter(d => jpDates.has(d)).sort();
     const retUs = [], retJp = [], retJpOc = [], dates = [];
@@ -172,7 +175,7 @@ function buildMatrices(usData, jpData) {
         const usDate = common[i-1], jpDate = common[i];
         const usRow = US_ETF_TICKERS.map(t => usMap.get(usDate)?.[t] ?? null);
         const jpRow = JP_ETF_TICKERS.map(t => jpMap.get(jpDate)?.[t] ?? null);
-        const jpOcRow = JP_ETF_TICKERS.map(t => jpMap.get(jpDate)?.[t] ?? null);
+        const jpOcRow = JP_ETF_TICKERS.map(t => jpOCMap.get(jpDate)?.[t] ?? null);
         if (usRow.some(v => v === null) || jpRow.some(v => v === null) || jpOcRow.some(v => v === null)) continue;
         retUs.push({ values: usRow }); retJp.push({ values: jpRow }); retJpOc.push({ values: jpOcRow }); dates.push(jpDate);
     }
