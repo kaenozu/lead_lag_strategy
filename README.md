@@ -4,6 +4,36 @@
 
 部分空間正則化付き PCA を用いた日米業種リードラグ投資戦略を実装し、実市場データ（2018-2025 年）でバックテストを実施。
 
+## プロジェクト構造
+
+```
+lead_lag_strategy/
+├── lib/                          # 共通ライブラリ
+│   ├── index.js                 # エントリーポイント
+│   ├── math.js                  # 線形代数関数
+│   ├── pca.js                  # PCAクラス
+│   ├── portfolio.js             # ポートフォリオ構築
+│   ├── data.js                 # データ処理
+│   ├── logger.js               # 構造化ログ
+│   └── config.js                # 設定管理
+├── tests/                       # テスト
+│   └── lib/
+│       ├── math.test.js
+│       ├── pca.test.js
+│       ├── portfolio.test.js
+│       └── config.test.js
+├── public/
+│   └── index.html               # Web UI
+├── server.js                    # APIサーバー
+├── generate_signal.js           # シグナル生成スクリプト
+├── backtest_real.js            # バックテスト
+├── backtest_improved.js        # 改良版バックテスト
+├── paper_trading.js            # ペーパートレード
+├── .env.example                # 環境変数テンプレート
+├── package.json
+└── jest.config.js
+```
+
 ## 結果サマリー
 
 ### 最適パラメータ
@@ -21,43 +51,72 @@
 | **PCA SUB** | **6.93** | **8.33** | **0.83** | **-20.63** | **56.59** |
 | DOUBLE | 0.29 | 16.35 | 0.02 | -38.19 | -6.83 |
 
-### 論文結果との比較
+## 主な改善点
 
-| 指標 | 論文 (2010-2025) | 本実装 (2018-2025) |
-|------|-----------------|-------------------|
-| AR | 23.79% | 6.93% |
-| R/R | 2.22 | 0.83 |
-| MDD | 9.58% | -20.63% |
+### コード品質向上
+- **共通ライブラリ化**: 線形代数関数を `lib/math.js` に集約
+- **エラーハンドリング**: 全関数にtry-catchと入力検証を追加
+- **構造化ログ**: Winstonによるログ機能 (`lib/logger.js`)
+- **設定外部化**: 環境変数による設定管理 (`lib/config.js`)
+- **ユニットテスト**: Jestによるテストフレームワーク
 
-## 主な発見
-
-1. **パラメータ最適化の効果**: λ=0.9（強い正則化）が選択され、推定誤差を抑制
-2. **PCA SUB の優位性**: 単純モメンタムを大きく上回るパフォーマンス
-3. **リスク特性の改善**: PCA SUB はリスク 8.33% と最も低く効率的
-4. **累積リターン**: 7 年間で +56.59%（年率 6.93%）
-
-## 実装ファイル
-
-```
-lead_lag_strategy/
-├── backtest_improved.js    # 改良版バックテスト（パラメータ最適化付き）
-├── backtest_real.js        # 実市場データ版
-├── backtest.js             # サンプルデータ版
-├── subspace_pca.py         # Python 版（参考用）
-├── data/                   # 取得した ETF データ
-└── results/                # バックテスト結果
-    ├── backtest_summary_improved.csv
-    ├── optimal_parameters.csv
-    ├── cumulative_*.csv
-    └── index.html          # 結果可視化
-```
+### 新機能
+- **Web APIサーバー**: `server.js` - リアルタイムシグナル生成
+- **シグナル生成スクリプト**: `generate_signal.js` - CLIから実行可能
+- **設定ファイル**: `.env.example` - 環境変数テンプレート
 
 ## 実行方法
 
+### 依存関係インストール
 ```bash
-cd lead_lag_strategy
-node backtest_improved.js
+npm install
 ```
+
+### シグナル生成
+```bash
+# デフォルト設定
+node generate_signal.js
+
+# パラメータ指定
+node generate_signal.js --window 60 --lambda 0.9 --quantile 0.4
+```
+
+### Webサーバー起動
+```bash
+npm run server
+# http://localhost:3000 でアクセス
+```
+
+### バックテスト実行
+```bash
+npm run backtest
+```
+
+### テスト実行
+```bash
+# 全テスト
+npm test
+
+# ウォッチモード
+npm run test:watch
+
+# リント
+npm run lint
+```
+
+## 設定
+
+`.env.example` を `.env` にコピーして必要に応じて変更：
+
+```bash
+cp .env.example .env
+```
+
+主要設定項目：
+- `WINDOW_LENGTH`: ウィンドウ長（デフォルト: 60）
+- `LAMBDA_REG`: 正則化パラメータ（デフォルト: 0.9）
+- `QUANTILE`: 分位点（デフォルト: 0.3）
+- `LOG_LEVEL`: ログレベル（デフォルト: info）
 
 ## 考察
 
