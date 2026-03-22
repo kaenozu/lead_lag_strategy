@@ -7,9 +7,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('./lib/constants');
+const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 
-const root = __dirname;
+const root = path.resolve(__dirname, '..');
 const dataDir = path.join(root, 'data');
 const resultsDir = path.join(root, 'results');
 

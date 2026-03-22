@@ -8,28 +8,42 @@
 
 ```
 lead_lag_strategy/
-├── lib/                          # 共通ライブラリ
-│   ├── index.js                 # エントリーポイント
-│   ├── math.js                  # 線形代数関数
-│   ├── pca.js                  # PCAクラス
-│   ├── portfolio.js             # ポートフォリオ構築
-│   ├── data.js                 # データ処理
-│   ├── logger.js               # 構造化ログ
-│   └── config.js                # 設定管理
-├── tests/                       # テスト
+├── src/                        # メインアプリケーションコード
+│   ├── index.js               # エントリーポイント
+│   ├── server.js              # APIサーバー
+│   └── generate_signal.js     # シグナル生成スクリプト
+├── scripts/                   # ユーティリティスクリプト
+│   ├── doctor.js              # 環境チェック
+│   ├── test_unit.js           # ユニットテスト
+│   ├── test_api.js            # APIテスト
+│   ├── test_backtest.js       # バックテスト動作確認
+│   └── paper_trading.js       # ペーパートレード
+├── backtest/                  # バックテスト実装
+│   ├── index.js               # モジュールエントリーポイント
+│   ├── basic.js               # サンプルデータ版
+│   ├── real.js                # 実市場データ版
+│   ├── improved.js            # 改良版（パラメータ最適化）
+│   ├── risk_managed.js        # リスク管理強化版
+│   └── analysis.js            # 戦略分析ツール
+├── lib/                       # 共通ライブラリ
+│   ├── index.js              # エントリーポイント
+│   ├── math.js               # 線形代数関数
+│   ├── pca.js                # PCAクラス
+│   ├── portfolio.js           # ポートフォリオ構築
+│   ├── data.js               # データ処理
+│   ├── logger.js             # 構造化ログ
+│   └── config.js             # 設定管理
+├── tests/                     # テスト
 │   └── lib/
 │       ├── math.test.js
 │       ├── pca.test.js
 │       ├── portfolio.test.js
 │       └── config.test.js
 ├── public/
-│   └── index.html               # Web UI
-├── server.js                    # APIサーバー
-├── generate_signal.js           # シグナル生成スクリプト
-├── backtest_real.js            # バックテスト
-├── backtest_improved.js        # 改良版バックテスト
-├── paper_trading.js            # ペーパートレード
-├── .env.example                # 環境変数テンプレート
+│   └── index.html            # Web UI
+├── data/                      # 市場データ（CSV）
+├── results/                   # 結果出力
+├── .env.example               # 環境変数テンプレート
 ├── package.json
 └── jest.config.js
 ```
@@ -81,10 +95,13 @@ npm install
 ### シグナル生成
 ```bash
 # デフォルト設定
-node generate_signal.js
+node src/generate_signal.js
 
 # パラメータ指定
-node generate_signal.js --window 60 --lambda 0.9 --quantile 0.4
+node src/generate_signal.js --window 60 --lambda 0.9 --quantile 0.4
+
+# または npm scripts を使用
+npm run signal
 ```
 
 ### Webサーバー起動
@@ -95,7 +112,13 @@ npm run server
 
 ### バックテスト実行
 ```bash
+# 実データ版（デフォルト）
 npm run backtest
+
+# その他のバックテスト
+npm run backtest:basic     # サンプルデータ版
+npm run backtest:improved # 改良版（パラメータ最適化）
+npm run backtest:risk     # リスク管理強化版
 ```
 
 ### テスト実行

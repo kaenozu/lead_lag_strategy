@@ -583,13 +583,33 @@ async function main() {
   const resultsSectorDir = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'SECTOR_DIR_LL');
   const metricsSectorDir = computePerformanceMetrics(resultsSectorDir.returns.map(r => r.return));
 
+  // CROSS-CORRELATION LEAD-LAG
+  const resultsCrossCorr = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'CROSS_CORR');
+  const metricsCrossCorr = computePerformanceMetrics(resultsCrossCorr.returns.map(r => r.return));
+
+  // ENSEMBLE CORRELATION LEAD-LAG
+  const resultsEnsemble = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'ENSEMBLE');
+  const metricsEnsemble = computePerformanceMetrics(resultsEnsemble.returns.map(r => r.return));
+
+  // RISK PARITY LEAD-LAG
+  const resultsRiskParity = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'RISK_PARITY');
+  const metricsRiskParity = computePerformanceMetrics(resultsRiskParity.returns.map(r => r.return));
+
+  // 週次リバランス戦略
+  const weeklyConfig = { ...backtestConfig, transactionCosts: { slippage: 0.0005, commission: 0.0002 } };
+  const resultsWeeklyCrossCorr = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig, SECTOR_LABELS, CFull, 'CROSS_CORR');
+  const metricsWeeklyCrossCorr = computePerformanceMetrics(resultsWeeklyCrossCorr.returns.map(r => r.return));
+
+  const resultsWeeklyDir = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig, SECTOR_LABELS, CFull, 'DIR_LL');
+  const metricsWeeklyDir = computePerformanceMetrics(resultsWeeklyDir.returns.map(r => r.return));
+
   // 結果表示
   logger.info('Backtest completed');
   console.log('\n' + '='.repeat(70));
   console.log('Strategy Comparison Summary');
   console.log('='.repeat(70));
   console.log(
-    'Strategy'.padEnd(15) +
+    'Strategy'.padEnd(18) +
     'AR (%)'.padStart(10) +
     'RISK (%)'.padStart(10) +
     'R/R'.padStart(8) +
@@ -605,12 +625,17 @@ async function main() {
     { name: 'SIMPLE LL', m: metricsSimple },
     { name: 'BETA LL', m: metricsBeta },
     { name: 'DIR LL', m: metricsDir },
-    { name: 'SECTOR DIR', m: metricsSectorDir }
+    { name: 'SECTOR DIR', m: metricsSectorDir },
+    { name: 'CROSS CORR', m: metricsCrossCorr },
+    { name: 'ENSEMBLE', m: metricsEnsemble },
+    { name: 'RISK PARITY', m: metricsRiskParity },
+    { name: 'WEEKLY CROSS', m: metricsWeeklyCrossCorr },
+    { name: 'WEEKLY DIR', m: metricsWeeklyDir }
   ];
 
   for (const { name, m } of summary) {
     console.log(
-      name.padEnd(15) +
+      name.padEnd(18) +
       (m.AR * 100).toFixed(2).padStart(10) +
       (m.RISK * 100).toFixed(2).padStart(10) +
       m.RR.toFixed(2).padStart(8) +
@@ -627,8 +652,22 @@ async function main() {
   fs.writeFileSync(path.join(outputDir, 'backtest_summary_real.csv'), summaryCSV);
 
   // 累積リターン
-  for (const { name, m } of summary) {
-    const strat = name === 'MOM' ? resultsMom : name === 'PCA PLAIN' ? resultsPlain : resultsSub;
+  const resultMap = {
+    'MOM': resultsMom,
+    'PCA_PLAIN': resultsPlain,
+    'PCA_SUB': resultsSub,
+    'SIMPLE_LL': resultsSimple,
+    'BETA_LL': resultsBeta,
+    'DIR_LL': resultsDir,
+    'SECTOR_DIR': resultsSectorDir,
+    'CROSS_CORR': resultsCrossCorr,
+    'ENSEMBLE': resultsEnsemble,
+    'RISK_PARITY': resultsRiskParity,
+    'WEEKLY_CROSS': resultsWeeklyCrossCorr,
+    'WEEKLY_DIR': resultsWeeklyDir
+  };
+
+  for (const [key, strat] of Object.entries(resultMap)) {
     let cum = 1;
     const cumData = strat.returns.map(r => {
       cum *= (1 + r.return);
@@ -636,7 +675,7 @@ async function main() {
     });
     const csv = 'Date,Cumulative\n' +
       cumData.map(r => `${r.date},${r.cumulative.toFixed(6)}`).join('\n');
-    fs.writeFileSync(path.join(outputDir, `cumulative_${name.toLowerCase().replace(' ', '_')}.csv`), csv);
+    fs.writeFileSync(path.join(outputDir, `cumulative_${key.toLowerCase()}.csv`), csv);
   }
 
   logger.info('Results saved', { outputDir });

@@ -5,9 +5,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
-const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./sector_constants');
+const { correlationMatrix, LeadLagSignal } = require('../lib/lead_lag_core');
+const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 
 function loadLocalData(dataDir, tickers) {
     const results = {};
@@ -142,8 +142,8 @@ async function main() {
     console.log('戦略分析ツール - フェーズ 1: 現状分析');
     console.log('='.repeat(70));
 
-    const dataDir = path.join(__dirname, 'data');
-    const outputDir = path.join(__dirname, 'results');
+    const dataDir = path.join(__dirname, '..', 'data');
+    const outputDir = path.join(__dirname, '..', 'results');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     console.log('\n[1/5] データ読み込み中...');

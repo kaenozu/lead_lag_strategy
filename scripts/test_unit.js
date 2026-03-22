@@ -7,13 +7,10 @@ const assert = require('assert');
 const {
     correlationMatrix,
     eigenDecomposition,
-    setEigenSeed,
     LeadLagSignal,
-} = require('./lib/lead_lag_core');
-const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('./lib/constants');
-
-setEigenSeed(12345);
+} = require('../lib/lead_lag_core');
+const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
+const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 
 // 相関: 定数列は分散 0 でも例外にならない
 {
