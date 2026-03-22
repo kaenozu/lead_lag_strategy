@@ -35,3 +35,9 @@ build/
 
 # テストカバレッジ
 coverage/
+
+# Playwright / UI 検証スクリーンショット（.gitkeep は残す）
+e2e-artifacts/*
+!e2e-artifacts/.gitkeep
+playwright-report/
+test-results/

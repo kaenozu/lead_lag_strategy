@@ -129,7 +129,13 @@ function eigenDecposition(matrix, k = 3) {
     let A = matrix.map(r => [...r]);
     
     for (let e = 0; e < k; e++) {
-        let v = normalize(new Array(n).fill(0).map((_, i) => Math.random()));
+        // べき乗法: 決定論的な初期化（列eの値を使用、ゼロの場合は単位ベクトル）
+        let v = new Array(n).fill(0).map((_, i) => matrix[i][e] || 0);
+        const vNorm = norm(v);
+        if (vNorm < 1e-10) {
+            v = new Array(n).fill(0).map((_, i) => (i === e % n) ? 1 : 0);
+        }
+        v = normalize(v);
         for (let iter = 0; iter < 500; iter++) {
             let vNew = new Array(n).fill(0);
             for (let i = 0; i < n; i++)

@@ -458,6 +458,47 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .today-summary {
+            display: none;
+            margin-bottom: 18px;
+            padding: 16px 18px;
+            border-radius: 12px;
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+        }
+        .today-summary .summary-date {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .today-summary .summary-row {
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .today-summary .summary-row:last-child { margin-bottom: 0; }
+        .today-summary .summary-buy {
+            background: #e8f5e9;
+            border-left: 4px solid var(--success);
+        }
+        .today-summary .summary-sell {
+            background: #ffebee;
+            border-left: 4px solid var(--danger);
+        }
+        .today-summary .summary-label {
+            display: block;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 6px;
+            color: var(--dark);
+        }
+        .today-summary .summary-list {
+            font-size: 14px;
+            line-height: 1.65;
+            color: #333;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -512,6 +553,7 @@
                 
                 <div id="backtestResults" style="display: none; margin-top: 20px;">
                     <h3>バックテスト結果</h3>
+                    <p id="btCostNote" style="font-size: 12px; color: #666; margin-bottom: 10px;"></p>
                     <div class="metrics-grid">
                         <div class="metric-card">
                             <div class="label">年率リターン</div>
@@ -534,28 +576,16 @@
                             <div class="value" id="btDays">--</div>
                         </div>
                     </div>
+                    <div id="btCompare" style="margin-top: 14px; font-size: 13px; color: #444; line-height: 1.6;"></div>
+                    <div id="btRolling" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                 </div>
             </div>
             
             <!-- メインパネル：シグナル表示 -->
             <div class="panel">
-                <h2>🎯 銘柄シグナル</h2>
+                <h2>🎯 本日の売買候補</h2>
 
-                <!-- 投資額設定 -->
-                <div class="alert alert-info" style="margin-bottom: 15px;">
-                    <strong>💰 投資額設定:</strong>
-                    <input type="number" id="capitalAmount" value="100000" min="10000" max="10000000" step="10000" style="width: 120px; margin: 0 10px;">
-                    <span>円</span>
-                    <button id="recalcBtn" style="margin-left: 10px; padding: 5px 15px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer;">再計算</button>
-                    <div style="margin-top: 8px; font-size: 13px; color: var(--success);">
-                        ✅ <strong>楽天証券:</strong> ETF は 1 口（約 1,500 円）から購入可能です。10 万円あれば 6 銘柄に分散投資できます。
-                    </div>
-                </div>
-
-                <!-- リスク警告 -->
-                <div class="alert alert-error" style="margin-bottom: 15px; font-size: 13px;">
-                    <strong>⚠️ 重要:</strong> 元本割れの可能性があります。過去のパフォーマンスは将来を保証しません。余剰資金で取引してください。
-                </div>
+                <div id="todaySummary" class="today-summary" aria-live="polite"></div>
 
                 <div class="tabs">
                     <button class="tab active" data-tab="all">全銘柄</button>
@@ -573,9 +603,9 @@
 
                 <!-- 初心者向けメッセージ -->
                 <div class="alert alert-info" style="margin-bottom: 15px; font-size: 14px;">
-                    <strong>💡 初心者向け推奨:</strong> 
-                    <span style="color: var(--success);">「買い候補」タブ</span>
-                    の銘柄のみを取引してください。売り（空売り）は上級者向けです。
+                    <strong>💡 運用の目安:</strong>
+                    上の緑枠が「今日買う候補」、赤枠が「今日売る候補」です。
+                    現物のみなら<span style="color: var(--success);">買い候補</span>だけ見れば足ります。
                 </div>
 
                 <div id="signalContent">
@@ -769,7 +799,7 @@
 
     <script>
         const API_BASE = 'http://localhost:3000/api';
-        let currentSignals = [];
+        let currentSignals = {};
         let currentFilter = 'all';
 
         // ヘルプモーダル
@@ -840,6 +870,7 @@
                 const data = await res.json();
 
                 if (data.error) {
+                    document.getElementById('todaySummary').style.display = 'none';
                     document.getElementById('signalContent').innerHTML = `
                         <div class="alert alert-error">❌ エラー：${data.error}</div>
                     `;
@@ -847,17 +878,16 @@
                 } else {
                     currentSignals = data;
                     currentFilter = 'buy';
+                    renderTodaySummary();
                     renderSignals('buy');
                     showCandidateSections(data);
                     document.getElementById('exportSection').style.display = 'block';
                     
                     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('.tab[data-tab="buy"]').classList.add('active');
-                    
-                    // 投資額の目安を更新（実際の価格に基づく）
-                    updateInvestmentGuide(data);
                 }
             } catch (e) {
+                document.getElementById('todaySummary').style.display = 'none';
                 console.error('自動シグナル生成エラー:', e);
             } finally {
                 btn.disabled = false;
@@ -865,30 +895,27 @@
             }
         }
 
-        // 投資額の目安を更新（実際の価格に基づく）
-        async function updateInvestmentGuide(signalData) {
-            if (!signalData.buyCandidates || signalData.buyCandidates.length === 0) return;
-            
-            // 各銘柄の現在価格を取得して表示
-            const tickers = signalData.buyCandidates.map(s => s.ticker);
-            const prices = [];
-            let totalMin = 0;
-            
-            for (const ticker of tickers) {
-                // 簡易的な価格表示（実際には API から取得）
-                const estimatedPrice = Math.floor(Math.random() * 10000) + 30000; // 仮の価格
-                prices.push({ ticker, price: estimatedPrice });
-                totalMin += estimatedPrice;
+        function renderTodaySummary() {
+            const el = document.getElementById('todaySummary');
+            if (!el || !currentSignals.buyCandidates) {
+                if (el) el.style.display = 'none';
+                return;
             }
-            
-            // 投資額案内を更新
-            const guideEl = document.querySelector('.alert-info div');
-            if (guideEl) {
-                guideEl.innerHTML = `
-                    ✅ <strong>楽天証券:</strong> ETF は 1 口から購入可能です。<br>
-                    💰 <strong>必要資金目安:</strong> 6 銘柄で約${(totalMin/10000).toFixed(0)}万円〜
-                `;
-            }
+            const fmt = arr => arr.map(s => `<strong>${s.ticker}</strong>（${s.name}）`).join('、');
+            const buys = currentSignals.buyCandidates || [];
+            const sells = currentSignals.sellCandidates || [];
+            el.innerHTML = `
+                <div class="summary-date">データ基準日: ${currentSignals.latestDate || '--'}（翌営業日の寄り付き前後の判断用）</div>
+                <div class="summary-row summary-buy">
+                    <span class="summary-label">今日買い候補（強い業種 ETF）</span>
+                    <p class="summary-list">${buys.length ? fmt(buys) : '—'}</p>
+                </div>
+                <div class="summary-row summary-sell">
+                    <span class="summary-label">今日売り候補（弱い業種 ETF・空売り検討／現物なら回避）</span>
+                    <p class="summary-list">${sells.length ? fmt(sells) : '—'}</p>
+                </div>
+            `;
+            el.style.display = 'block';
         }
 
         // ページ読み込み時に自動生成（500ms 後）
@@ -899,19 +926,12 @@
             const params = {
                 windowLength: localStorage.getItem('windowLength') || '60',
                 lambdaReg: localStorage.getItem('lambdaReg') || '0.9',
-                quantile: localStorage.getItem('quantile') || '0.4',
-                capitalAmount: localStorage.getItem('capitalAmount') || '1000000'
+                quantile: localStorage.getItem('quantile') || '0.4'
             };
-            
-            // 投資額が最低金額未満の場合は修正
-            if (parseInt(params.capitalAmount) < 1000000) {
-                params.capitalAmount = '1000000';
-            }
             
             document.getElementById('windowLength').value = params.windowLength;
             document.getElementById('lambdaReg').value = params.lambdaReg;
             document.getElementById('quantile').value = params.quantile;
-            document.getElementById('capitalAmount').value = params.capitalAmount;
             
             return params;
         }
@@ -920,11 +940,10 @@
             localStorage.setItem('windowLength', document.getElementById('windowLength').value);
             localStorage.setItem('lambdaReg', document.getElementById('lambdaReg').value);
             localStorage.setItem('quantile', document.getElementById('quantile').value);
-            localStorage.setItem('capitalAmount', document.getElementById('capitalAmount').value);
         }
 
         // 各入力フィールドの変更時に保存
-        ['windowLength', 'lambdaReg', 'quantile', 'capitalAmount'].forEach(id => {
+        ['windowLength', 'lambdaReg', 'quantile'].forEach(id => {
             const el = document.getElementById(id);
             el.addEventListener('change', saveParameters);
             el.addEventListener('blur', saveParameters);  // フォーカスが外れた時も保存
@@ -932,47 +951,6 @@
 
         // ページ読み込み時にパラメータを復元
         loadParameters();
-
-        // 投資額設定（localStorage から取得）
-        function getCapitalAmount() {
-            return parseInt(document.getElementById('capitalAmount').value) || 300000;
-        }
-
-        // 投資額計算（シグナル値に応じて配分・1 口から購入可能）
-        function calculateInvestment(signals, totalCapital) {
-            const n = signals.length;
-            const basePerPosition = Math.floor(totalCapital / n / 100) * 100;
-            
-            // シグナル値の絶対値で重み付け
-            const totalSignalWeight = signals.reduce((sum, s) => sum + Math.abs(s.signal), 0);
-            
-            // 楽天証券は 1 口から購入可能（約 1,500 円〜）
-            const MIN_INVESTMENT = 1500;  // 最低 1,500 円（1 口分）
-            
-            return signals.map(s => {
-                const weight = Math.abs(s.signal) / totalSignalWeight;
-                let amount = Math.floor(totalCapital * weight / 100) * 100;
-                
-                // 最小投資額を確保（均等配分の 50%）
-                const minAmount = Math.floor(basePerPosition * 0.5 / 100) * 100;
-                if (amount < minAmount) amount = minAmount;
-                
-                // 最大投資額を制限（均等配分の 200%）
-                const maxAmount = Math.floor(basePerPosition * 2 / 100) * 100;
-                if (amount > maxAmount) amount = maxAmount;
-                
-                // 1,500 円未満の場合は 1,500 円に
-                if (amount < 1500) amount = 1500;
-                
-                return {
-                    ...s,
-                    amount: amount,
-                    amountFormatted: amount.toLocaleString() + '円',
-                    weight: (weight * 100).toFixed(1) + '%',
-                    minRequired: MIN_INVESTMENT
-                };
-            });
-        }
 
         // タブ切り替え
         document.querySelectorAll('.tab').forEach(tab => {
@@ -984,18 +962,10 @@
             });
         });
 
-        // 再計算ボタン
-        document.getElementById('recalcBtn').addEventListener('click', () => {
-            if (currentSignals.length > 0) {
-                renderSignals(currentFilter);
-            }
-        });
-
         // CSV エクスポート
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
             if (currentSignals.length === 0) return;
             
-            const capital = getCapitalAmount();
             // 現在のタブに応じてエクスポート
             const signalsToExport = currentFilter === 'buy' ? 
                 (currentSignals.buyCandidates || []) :
@@ -1003,9 +973,11 @@
                 (currentSignals.sellCandidates || []) :
                 currentSignals.signals;
             
-            const withInvestment = calculateInvestment(signalsToExport, capital);
-            const csv = 'Rank,Ticker,Sector,Signal,Amount,Weight\n' + 
-                withInvestment.map((s, i) => `${i+1},${s.ticker},${s.sector},${s.signal},${s.amount},${s.weight}`).join('\n');
+            const csv = 'Rank,Ticker,Name,Signal,PriceRef\n' + 
+                signalsToExport.map((s, i) => {
+                    const price = s.price > 0 ? s.price : '';
+                    return `${i+1},${s.ticker},${s.name},${s.signal},${price}`;
+                }).join('\n');
             
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
@@ -1038,6 +1010,7 @@
                 const data = await res.json();
 
                 if (data.error) {
+                    document.getElementById('todaySummary').style.display = 'none';
                     document.getElementById('signalContent').innerHTML = `
                         <div class="alert alert-error">❌ エラー：${data.error}</div>
                     `;
@@ -1045,11 +1018,13 @@
                 } else {
                     currentSignals = data;
                     currentFilter = 'all';
+                    renderTodaySummary();
                     renderSignals('all');
                     showCandidateSections(data);
                     document.getElementById('exportSection').style.display = 'block';
                 }
             } catch (e) {
+                document.getElementById('todaySummary').style.display = 'none';
                 document.getElementById('signalContent').innerHTML = `
                     <div class="alert alert-error">❌ エラー：${e.message}</div>
                 `;
@@ -1093,6 +1068,13 @@
                 if (data.error) {
                     alert(`バックテストエラー：${data.error}`);
                 } else if (data.metrics) {
+                    const noteEl = document.getElementById('btCostNote');
+                    if (noteEl) {
+                        noteEl.textContent = data.costsNote
+                            ? `（コスト込み）${data.costsNote}`
+                            : '（コスト込み）';
+                    }
+
                     document.getElementById('btAR').textContent = `${data.metrics.AR.toFixed(2)}%`;
                     document.getElementById('btRR').textContent = data.metrics.RR.toFixed(2);
                     document.getElementById('btMDD').textContent = `${data.metrics.MDD.toFixed(2)}%`;
@@ -1101,17 +1083,51 @@
                     document.getElementById('btRR').className = `value ${data.metrics.RR >= 0.5 ? 'positive' : 'negative'}`;
                     document.getElementById('btMDD').className = `value ${data.metrics.MDD >= -20 ? 'positive' : 'negative'}`;
                     
-                    // 合計リターンも表示
                     const totalEl = document.getElementById('btTotal');
                     if (totalEl) {
                         totalEl.textContent = `${data.metrics.Total.toFixed(2)}%`;
                         totalEl.className = `value ${data.metrics.Total >= 0 ? 'positive' : 'negative'}`;
                     }
                     
-                    // 日数表示
                     const daysEl = document.getElementById('btDays');
                     if (daysEl) {
                         daysEl.textContent = data.metrics.Days;
+                    }
+
+                    const cmp = document.getElementById('btCompare');
+                    if (cmp && data.metrics.equalWeightJP && data.metrics.momentum) {
+                        const eq = data.metrics.equalWeightJP;
+                        const mo = data.metrics.momentum;
+                        cmp.innerHTML =
+                            '<strong>ベンチマーク（同じ評価日数）</strong><br>' +
+                            `・JP 業種均等ロング（コストなし）累積: ${eq.Total.toFixed(2)}% / R/R: ${eq.RR.toFixed(2)}<br>` +
+                            `・モメンタム LS（コスト込み）累積: ${mo.Total.toFixed(2)}% / R/R: ${mo.RR.toFixed(2)}`;
+                    }
+
+                    const rollEl = document.getElementById('btRolling');
+                    if (rollEl && data.rollingSummary && data.rollingSummary.count > 0) {
+                        const r = data.rollingSummary;
+                        const range =
+                            r.minRR != null && r.maxRR != null
+                                ? `　範囲: ${r.minRR.toFixed(2)} 〜 ${r.maxRR.toFixed(2)}`
+                                : '';
+                        rollEl.innerHTML =
+                            `<strong>ローリング R/R</strong>（窓 ${r.window} 日、本数 ${r.count}）` +
+                            `　直近終端: ${r.lastDate} / R/R: ${r.lastRR != null ? r.lastRR.toFixed(2) : '--'}` +
+                            range;
+                    } else if (rollEl) {
+                        rollEl.textContent = '';
+                    }
+
+                    if (data.yearlyStrategy && Object.keys(data.yearlyStrategy).length > 0) {
+                        const yLines = Object.entries(data.yearlyStrategy)
+                            .sort()
+                            .map(([y, m]) => `${y}年: 累積 ${m.Total.toFixed(2)}% / R/R ${m.RR.toFixed(2)}`)
+                            .join('　');
+                        if (rollEl) {
+                            rollEl.innerHTML += (rollEl.innerHTML ? '<br>' : '') +
+                                '<strong>年次（PCA・コスト込み）</strong>　' + yLines;
+                        }
                     }
                 } else {
                     alert('不明なエラーが発生しました');
@@ -1137,6 +1153,8 @@
                 return;
             }
 
+            renderTodaySummary();
+
             let signals = [...currentSignals.signals];
 
             if (filter === 'buy') {
@@ -1148,15 +1166,10 @@
             const total = currentSignals.signals.length;
             const buyCount = currentSignals.buyCandidates?.length || 0;
             const sellCount = currentSignals.sellCandidates?.length || 0;
-            const capital = getCapitalAmount();
-            const withInvestment = calculateInvestment(signals, capital);
-            const totalInvested = withInvestment.reduce((sum, s) => sum + s.amount, 0);
 
             let html = `
                 <div style="margin-bottom: 15px; font-size: 14px; color: #666;">
-                    合計：${total}銘柄 | 買い候補：${buyCount}銘柄 | 売り候補：${sellCount}銘柄 | 
-                    最終更新：${currentSignals.latestDate || '--'} | 
-                    投資総額：<strong>${totalInvested.toLocaleString()}円</strong>
+                    全 ${total} 銘柄 | 買い候補 ${buyCount} | 売り候補 ${sellCount} | 基準日 ${currentSignals.latestDate || '--'}
                 </div>
                 <table class="signal-table">
                     <thead>
@@ -1165,22 +1178,17 @@
                             <th>ティッカー</th>
                             <th>業種</th>
                             <th>シグナル値</th>
-                            <th>投資額</th>
-                            <th>比率</th>
+                            <th>参考価格</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
 
-            withInvestment.forEach(s => {
+            signals.forEach(s => {
                 const rankClass = s.rank <= buyCount ? 'top' : s.rank > total - sellCount ? 'bottom' : 'middle';
                 const signalClass = s.signal > 0 ? 'positive' : 'negative';
                 const signalIcon = s.signal > 0 ? '📈' : s.signal < 0 ? '📉' : '➖';
-                
-                // 価格表示（1 口から購入可能）
-                const priceText = s.price > 0 ? 
-                    `<div style="font-size: 11px; color: #666;">${s.priceFormatted} × 1 口 = ${s.amountFormatted}</div>` :
-                    `<div style="font-size: 11px; color: #666;">${s.amountFormatted}</div>`;
+                const priceCell = s.price > 0 ? s.priceFormatted : '—';
 
                 html += `
                     <tr>
@@ -1188,10 +1196,7 @@
                         <td style="font-weight: bold;">${s.ticker}</td>
                         <td>${s.name}</td>
                         <td class="signal-value ${signalClass}">${signalIcon} ${(s.signal * 1000).toFixed(2)}</td>
-                        <td>
-                            ${priceText}
-                        </td>
-                        <td style="font-size: 12px; color: #666;">${s.weight}</td>
+                        <td style="font-size: 12px; color: #666;">${priceCell}</td>
                     </tr>
                 `;
             });

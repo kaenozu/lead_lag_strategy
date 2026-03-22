@@ -65,6 +65,12 @@ lead_lag_strategy/
 - **シグナル生成スクリプト**: `generate_signal.js` - CLIから実行可能
 - **設定ファイル**: `.env.example` - 環境変数テンプレート
 
+### 論文準拠・再現性（環境変数）
+- **`BACKTEST_DATA_MODE`**: `yahoo`（既定・近似）または `csv`（`DATA_DIR` の公式 CSV を読む）
+- **`BACKTEST_JP_WINDOW_RETURN`**: 推定窓の日本側リターンを `cc`（既定）または `oc` に切替（Python `SubspacePCAConfig.jp_window_return` と対応）
+- 日付アライメントは各**日本営業日**に対し、**直前の米国営業日**の CC を対応づける（`lib/data.js` の `alignDates`）
+- PCA は **`np.corrcoef` 相当**の標本相関と **対称ヤコビ法**による固有分解（`lib/math.js`）
+
 ## 実行方法
 
 ### 依存関係インストール

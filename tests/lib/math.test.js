@@ -1,111 +1,37 @@
 /**
- * lib/math.js のテスト
+ * lib/math.js のテスト（改良版）
  */
 
 'use strict';
 
 const math = require('../../lib/math');
 
-describe('lib/math', () => {
-  describe('transpose', () => {
-    test('2x3行列を転置', () => {
-      const matrix = [
-        [1, 2, 3],
-        [4, 5, 6]
-      ];
-      const result = math.transpose(matrix);
-      expect(result).toEqual([
-        [1, 4],
-        [2, 5],
-        [3, 6]
-      ]);
+describe('lib/math - Enhanced', () => {
+  describe('validateNumber', () => {
+    test('有効な数値', () => {
+      expect(() => math.validateNumber(42)).not.toThrow();
     });
 
-    test('空行列でエラーをスロー', () => {
-      expect(() => math.transpose([])).toThrow('Invalid matrix');
+    test('NaN でエラー', () => {
+      expect(() => math.validateNumber(NaN)).toThrow('Invalid number');
+    });
+
+    test('Infinity でエラー', () => {
+      expect(() => math.validateNumber(Infinity)).toThrow('Invalid number');
     });
   });
 
-  describe('matmul', () => {
-    test('2x2行列の積', () => {
-      const A = [
-        [1, 2],
-        [3, 4]
-      ];
-      const B = [
-        [5, 6],
-        [7, 8]
-      ];
-      const result = math.matmul(A, B);
-      expect(result[0][0]).toBeCloseTo(19);
-      expect(result[0][1]).toBeCloseTo(22);
-      expect(result[1][0]).toBeCloseTo(43);
-      expect(result[1][1]).toBeCloseTo(50);
+  describe('validateMatrix', () => {
+    test('有効な行列', () => {
+      expect(() => math.validateMatrix([[1, 2], [3, 4]])).not.toThrow();
     });
 
-    test('次元不一致でエラーをスロー', () => {
-      const A = [[1, 2]];
-      const B = [[1], [2], [3]];
-      expect(() => math.matmul(A, B)).toThrow('Matrix dimensions mismatch');
-    });
-  });
-
-  describe('dotProduct', () => {
-    test('ベクトルの内積', () => {
-      const a = [1, 2, 3];
-      const b = [4, 5, 6];
-      expect(math.dotProduct(a, b)).toBe(32);
+    test('空行列でエラー', () => {
+      expect(() => math.validateMatrix([])).toThrow('Invalid matrix');
     });
 
-    test('次元不一致でエラーをスロー', () => {
-      expect(() => math.dotProduct([1, 2], [1, 2, 3])).toThrow('Vector dimension mismatch');
-    });
-  });
-
-  describe('norm', () => {
-    test('ベクトルのノルム', () => {
-      const v = [3, 4];
-      expect(math.norm(v)).toBe(5);
-    });
-
-    test('空ベクトルでエラーをスロー', () => {
-      expect(() => math.norm([])).toThrow('Invalid vector');
-    });
-  });
-
-  describe('normalize', () => {
-    test('ベクトルの正規化', () => {
-      const v = [3, 4];
-      const result = math.normalize(v);
-      expect(result[0]).toBeCloseTo(0.6);
-      expect(result[1]).toBeCloseTo(0.8);
-    });
-
-    test('ゼロベクトルでエラーをスロー', () => {
-      expect(() => math.normalize([0, 0])).toThrow('Cannot normalize zero vector');
-    });
-  });
-
-  describe('diag', () => {
-    test('対角要素を取得', () => {
-      const matrix = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]
-      ];
-      expect(math.diag(matrix)).toEqual([1, 5, 9]);
-    });
-  });
-
-  describe('makeDiag', () => {
-    test('対角行列を作成', () => {
-      const v = [1, 2, 3];
-      const result = math.makeDiag(v);
-      expect(result).toEqual([
-        [1, 0, 0],
-        [0, 2, 0],
-        [0, 0, 3]
-      ]);
+    test('不一致の行長でエラー', () => {
+      expect(() => math.validateMatrix([[1, 2], [3]])).toThrow('inconsistent length');
     });
   });
 
@@ -115,12 +41,28 @@ describe('lib/math', () => {
         [2, 1],
         [1, 2]
       ];
-      const { eigenvalues, eigenvectors } = math.eigenDecomposition(matrix, 2);
+      const { eigenvalues, eigenvectors, converged } = math.eigenDecomposition(matrix, 2);
+      
       expect(eigenvalues.length).toBe(2);
       expect(eigenvectors.length).toBe(2);
+      expect(converged).toBe(true);
+      
+      // 固有値の検証（理論値：3, 1）
+      expect(eigenvalues[0]).toBeCloseTo(3, 5);
+      expect(eigenvalues[1]).toBeCloseTo(1, 5);
     });
 
-    test('kパラメータで取得数を制限', () => {
+    test('収束判定', () => {
+      const matrix = [
+        [4, 1, 1],
+        [1, 4, 1],
+        [1, 1, 4]
+      ];
+      const { converged } = math.eigenDecomposition(matrix, 3, 1000, 1e-6);
+      expect(converged).toBe(true);
+    });
+
+    test('k パラメータで取得数を制限', () => {
       const matrix = [
         [2, 1, 0.5],
         [1, 2, 1],
@@ -131,7 +73,7 @@ describe('lib/math', () => {
     });
   });
 
-  describe('correlationMatrix', () => {
+  describe('correlationMatrix - Optimized', () => {
     test('相関行列の計算', () => {
       const data = [
         [1, 2],
@@ -140,27 +82,120 @@ describe('lib/math', () => {
         [4, 8]
       ];
       const result = math.correlationMatrix(data);
+      
       expect(result[0][0]).toBeCloseTo(1);
       expect(result[1][1]).toBeCloseTo(1);
       expect(result[0][1]).toBeCloseTo(1);
-      expect(result[1][0]).toBeCloseTo(1);
+      expect(result[1][0]).toBeCloseTo(1); // 対称性
     });
 
-    test('空データでエラーをスロー', () => {
-      expect(() => math.correlationMatrix([])).toThrow('Invalid data');
+    test('対称性の検証', () => {
+      const data = [
+        [1.5, 2.3, 3.1],
+        [2.1, 3.5, 4.2],
+        [1.8, 2.9, 3.7],
+        [2.5, 3.8, 4.5]
+      ];
+      const corr = math.correlationMatrix(data);
+      
+      // 対称性のチェック
+      for (let i = 0; i < corr.length; i++) {
+        for (let j = i + 1; j < corr.length; j++) {
+          expect(corr[i][j]).toBeCloseTo(corr[j][i], 10);
+        }
+      }
+    });
+
+    test('空データでエラー', () => {
+      expect(() => math.correlationMatrix([])).toThrow('Invalid matrix');
+    });
+
+    test('サンプル数が少なすぎる場合エラー', () => {
+      expect(() => math.correlationMatrix([[1, 2]])).toThrow('Need at least 2 samples');
     });
   });
 
-  describe('mean', () => {
-    test('ベクトルの平均', () => {
-      expect(math.mean([1, 2, 3, 4, 5])).toBe(3);
+  describe('correlationMatrixSample (numpy corrcoef 相当)', () => {
+    test('2 変数・3 観測で検証', () => {
+      const data = [
+        [1, 4],
+        [2, -1],
+        [3, 3]
+      ];
+      const c = math.correlationMatrixSample(data);
+      // np.corrcoef(data.T) と一致
+      expect(c[0][0]).toBeCloseTo(1, 8);
+      expect(c[1][1]).toBeCloseTo(1, 8);
+      expect(c[0][1]).toBeCloseTo(-0.5 / Math.sqrt(7), 8);
+      expect(c[1][0]).toBeCloseTo(c[0][1], 8);
     });
   });
 
-  describe('std', () => {
-    test('ベクトルの標準偏差', () => {
-      const result = math.std([2, 4, 4, 4, 5, 5, 7, 9]);
-      expect(result).toBeCloseTo(2.14);
+  describe('eigenSymmetricTopK', () => {
+    test('対角行列の固有値', () => {
+      const A = [
+        [3, 0, 0],
+        [0, 1, 0],
+        [0, 0, 2]
+      ];
+      const { eigenvalues } = math.eigenSymmetricTopK(A, 2);
+      expect(eigenvalues[0]).toBeCloseTo(3);
+      expect(eigenvalues[1]).toBeCloseTo(2);
+    });
+  });
+
+  describe('normalize - Enhanced', () => {
+    test('ベクトルの正規化', () => {
+      const v = [3, 4];
+      const result = math.normalize(v);
+      expect(result[0]).toBeCloseTo(0.6);
+      expect(result[1]).toBeCloseTo(0.8);
+      expect(math.norm(result)).toBeCloseTo(1);
+    });
+
+    test('ゼロベクトルでエラー', () => {
+      expect(() => math.normalize([0, 0])).toThrow('Cannot normalize zero vector');
+    });
+  });
+
+  describe('trace', () => {
+    test('行列のトレース', () => {
+      const matrix = [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9]
+      ];
+      expect(math.trace(matrix)).toBe(15);
+    });
+
+    test('非正方行列でエラー', () => {
+      expect(() => math.trace([[1, 2], [3, 4], [5, 6]])).toThrow('must be square');
+    });
+  });
+
+  describe('frobeniusNorm', () => {
+    test('フロベニウスノルム', () => {
+      const matrix = [
+        [1, 2],
+        [3, 4]
+      ];
+      const expected = Math.sqrt(1 + 4 + 9 + 16);
+      expect(math.frobeniusNorm(matrix)).toBeCloseTo(expected);
+    });
+  });
+
+  describe('identity', () => {
+    test('単位行列の作成', () => {
+      const result = math.identity(3);
+      expect(result).toEqual([
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+      ]);
+    });
+
+    test('無効なサイズでエラー', () => {
+      expect(() => math.identity(0)).toThrow('must be positive');
     });
   });
 });

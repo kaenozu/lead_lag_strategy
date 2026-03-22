@@ -1,0 +1,22 @@
+{
+  "config": {
+    "windowLength": 60,
+    "nFactors": 3,
+    "lambdaReg": 0.9,
+    "quantile": 0.4
+  },
+  "signals": [
+    { "ticker": "1617.T", "name": "食品", "signal": 0.07, "rank": 1, "price": 43860, "priceFormatted": "43,860円/口" },
+    { "ticker": "1618.T", "name": "エネルギー資源", "signal": 0.05, "rank": 2, "price": 39830, "priceFormatted": "39,830円/口" },
+    { "ticker": "1624.T", "name": "機械", "signal": -0.07, "rank": 3, "price": 87880, "priceFormatted": "87,880円/口" }
+  ],
+  "buyCandidates": [
+    { "ticker": "1617.T", "name": "食品", "signal": 0.07, "rank": 1, "price": 43860, "priceFormatted": "43,860円/口" },
+    { "ticker": "1618.T", "name": "エネルギー資源", "signal": 0.05, "rank": 2, "price": 39830, "priceFormatted": "39,830円/口" }
+  ],
+  "sellCandidates": [
+    { "ticker": "1624.T", "name": "機械", "signal": -0.07, "rank": 3, "price": 87880, "priceFormatted": "87,880円/口" }
+  ],
+  "latestDate": "2026-03-22",
+  "metrics": { "meanSignal": 0.01, "stdSignal": 0.04 }
+}

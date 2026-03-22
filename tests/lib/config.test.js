@@ -25,6 +25,10 @@ describe('lib/config', () => {
       expect(config.backtest.windowLength).toBeDefined();
       expect(config.backtest.lambdaReg).toBeDefined();
       expect(config.backtest.quantile).toBeDefined();
+      expect(config.backtest.chartCalendarDays).toBeGreaterThan(0);
+      expect(config.backtest.transactionCosts.slippage).toBeDefined();
+      expect(config.backtest.transactionCosts.commission).toBeDefined();
+      expect(config.backtest.rollingReportWindow).toBeGreaterThan(0);
     });
 
     test('取引設定', () => {
@@ -42,6 +46,18 @@ describe('lib/config', () => {
     test('セクターラベル設定', () => {
       expect(config.sectorLabels).toBeInstanceOf(Object);
       expect(Object.keys(config.sectorLabels).length).toBeGreaterThan(0);
+    });
+
+    test('PCA 列順キー', () => {
+      expect(config.pca.orderedSectorKeys).toBeInstanceOf(Array);
+      expect(config.pca.orderedSectorKeys.length).toBe(
+        config.tickers.us.length + config.tickers.jp.length
+      );
+    });
+
+    test('データモード・窓リターン型', () => {
+      expect(['yahoo', 'csv']).toContain(config.data.mode);
+      expect(['cc', 'oc']).toContain(config.backtest.jpWindowReturn);
     });
   });
 

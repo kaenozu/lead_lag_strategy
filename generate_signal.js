@@ -11,9 +11,10 @@ const path = require('path');
 // ライブラリ
 const { createLogger } = require('./lib/logger');
 const { config } = require('./lib/config');
-const { SubspaceRegularizedPCA, LeadLagSignal } = require('./lib/pca');
+const { LeadLagSignal } = require('./lib/pca');
 const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
-const { correlationMatrix } = require('./lib/math');
+const { correlationMatrixSample } = require('./lib/math');
+const { loadCSV, buildPaperAlignedReturnRows } = require('./lib/data');
 
 const logger = createLogger('SignalGenerator');
 
@@ -43,6 +44,28 @@ const JP_ETF_NAMES = {
  * Yahoo Financeからデータを取得
  */
 async function fetchData(ticker, days = 200) {
+  if (config.data.mode === 'csv') {
+    const filePath = path.join(path.resolve(config.data.dataDir), `${ticker}.csv`);
+    if (!fs.existsSync(filePath)) {
+      logger.error(`CSV not found: ${filePath}`);
+      return [];
+    }
+    try {
+      const rows = loadCSV(filePath).map(row => ({
+        date: String(row.Date || row.date || '').split('T')[0],
+        open: Number(row.Open ?? row.open),
+        high: Number(row.High ?? row.high),
+        low: Number(row.Low ?? row.low),
+        close: Number(row.Close ?? row.close),
+        volume: Number(row.Volume ?? row.volume ?? 0)
+      })).filter(r => r.date && Number.isFinite(r.close) && r.close > 0);
+      return days > 0 && rows.length > days ? rows.slice(-days) : rows;
+    } catch (error) {
+      logger.error(`Failed to load ${ticker}`, { error: error.message });
+      return [];
+    }
+  }
+
   try {
     const YahooFinance = require('yahoo-finance2').default;
     const yahooFinance = new YahooFinance();
@@ -166,55 +189,46 @@ async function main() {
     console.log(`${jpData[ticker].length} days`);
   }
 
-  // CC Returns計算
   const usCC = {};
   const jpCC = {};
+  const jpOC = {};
 
   for (const t of US_ETF_TICKERS) {
     usCC[t] = computeReturns(usData[t], 'cc');
   }
   for (const t of JP_ETF_TICKERS) {
     jpCC[t] = computeReturns(jpData[t], 'cc');
+    jpOC[t] = computeReturns(jpData[t], 'oc');
   }
 
-  // 日付マッピング
-  const usDates = new Set();
-  const jpDates = new Set();
-
+  const usMap = new Map();
   for (const t of US_ETF_TICKERS) {
     for (const r of usCC[t]) {
-      usDates.add(r.date);
+      if (!usMap.has(r.date)) usMap.set(r.date, {});
+      usMap.get(r.date)[t] = r.return;
     }
   }
+  const jpCCMap = new Map();
+  const jpOCMap = new Map();
   for (const t of JP_ETF_TICKERS) {
     for (const r of jpCC[t]) {
-      jpDates.add(r.date);
+      if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
+      jpCCMap.get(r.date)[t] = r.return;
+    }
+    for (const r of jpOC[t]) {
+      if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {});
+      jpOCMap.get(r.date)[t] = r.return;
     }
   }
 
-  const commonDates = [...usDates].filter(d => jpDates.has(d)).sort();
-
-  // リターンマトリックスを構築
-  const retUs = [];
-  const retJp = [];
-  const allDates = [];
-
-  for (const date of commonDates) {
-    const usRow = US_ETF_TICKERS.map(t => {
-      const ret = usCC[t].find(r => r.date === date);
-      return ret ? ret.return : null;
-    });
-    const jpRow = JP_ETF_TICKERS.map(t => {
-      const ret = jpCC[t].find(r => r.date === date);
-      return ret ? ret.return : null;
-    });
-
-    if (usRow.some(v => v === null) || jpRow.some(v => v === null)) continue;
-
-    retUs.push(usRow);
-    retJp.push(jpRow);
-    allDates.push(date);
-  }
+  const { retUs, retJp } = buildPaperAlignedReturnRows(
+    usMap,
+    jpCCMap,
+    jpOCMap,
+    US_ETF_TICKERS,
+    JP_ETF_TICKERS,
+    config.backtest.jpWindowReturn
+  );
 
   console.log(`\n📊 Data prepared: ${retUs.length} trading days`);
 
@@ -224,19 +238,18 @@ async function main() {
     process.exit(1);
   }
 
-  // C_full 計算
-  const combined = retUs.map((r, i) => [...r, ...retJp[i]]);
-  const CFull = correlationMatrix(combined);
+  const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
+  const CFull = correlationMatrixSample(combined);
 
-  // シグナル計算
   const signalGen = new LeadLagSignal({
     lambdaReg: options.lambdaReg,
-    nFactors: config.backtest.nFactors
+    nFactors: config.backtest.nFactors,
+    orderedSectorKeys: config.pca.orderedSectorKeys
   });
 
-  const retUsWin = retUs.slice(-options.windowLength);
-  const retJpWin = retJp.slice(-options.windowLength);
-  const retUsLatest = retUs[retUs.length - 1];
+  const retUsWin = retUs.slice(-options.windowLength).map(r => r.values);
+  const retJpWin = retJp.slice(-options.windowLength).map(r => r.values);
+  const retUsLatest = retUs[retUs.length - 1].values;
 
   const signal = signalGen.computeSignal(
     retUsWin,

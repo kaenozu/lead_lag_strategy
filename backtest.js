@@ -1,13 +1,21 @@
 /**
  * 部分空間正則化付き PCA を用いた日米業種リードラグ投資戦略
  * Subspace Regularized PCA for Lead-Lag Investment Strategy
- * 
+ *
  * Reference: 中川慧 et al. "部分空間正則化付き主成分分析を用いた日米業種リードラグ投資戦略"
  */
 
-const axios = require('axios');
 const { createWriteStream, writeFileSync, readFileSync, existsSync, mkdirSync } = require('fs');
 const path = require('path');
+
+// ============================================================================
+// 定数
+// ============================================================================
+
+const DOUBLE_SORT_QUANTILES = {
+    low: 0.33,
+    high: 0.67
+};
 
 // ============================================================================
 // 設定
@@ -175,8 +183,13 @@ function eigenDecposition(matrix, k = 3) {
     let A = matrix.map(row => [...row]);
     
     for (let e = 0; e < k; e++) {
-        // べき乗法
-        let v = new Array(n).fill(0).map((_, i) => Math.random());
+        // べき乗法: 決定論的な初期化（列eの値を使用、ゼロの場合は単位ベクトル）
+        let v = new Array(n).fill(0).map((_, i) => matrix[i][e] || 0);
+        const vNorm = norm(v);
+        if (vNorm < 1e-10) {
+            // フォールバック: 対角要素ベースの初期化
+            v = new Array(n).fill(0).map((_, i) => (i === e % n) ? 1 : 0);
+        }
         v = normalize(v);
         
         for (let iter = 0; iter < 1000; iter++) {
@@ -754,28 +767,32 @@ function runDoubleSortStrategy(returnsUs, returnsJp, returnsJpOc, config, sector
             momentum[k] /= config.windowLength;
         }
         
-        // ダブルソート（メディアンで分割）
-        const pcaMedian = signalPca.sort((a, b) => a - b)[Math.floor(nJp / 2)];
-        const momMedian = momentum.sort((a, b) => a - b)[Math.floor(nJp / 2)];
-        
+        // ダブルソート（3 等分点で分割）
+        const sortedPca = [...signalPca].sort((a, b) => a - b);
+        const sortedMom = [...momentum].sort((a, b) => a - b);
+        const pcaLow = sortedPca[Math.floor(nJp * DOUBLE_SORT_QUANTILES.low)];
+        const pcaHigh = sortedPca[Math.floor(nJp * DOUBLE_SORT_QUANTILES.high)];
+        const momLow = sortedMom[Math.floor(nJp * DOUBLE_SORT_QUANTILES.low)];
+        const momHigh = sortedMom[Math.floor(nJp * DOUBLE_SORT_QUANTILES.high)];
+
         let longCount = 0;
         let shortCount = 0;
-        
+
         for (let j = 0; j < nJp; j++) {
-            if (signalPca[j] > pcaMedian && momentum[j] > momMedian) longCount++;
-            else if (signalPca[j] < pcaMedian && momentum[j] < momMedian) shortCount++;
+            if (signalPca[j] > pcaHigh && momentum[j] > momHigh) longCount++;
+            else if (signalPca[j] < pcaLow && momentum[j] < momLow) shortCount++;
         }
-        
+
         if (longCount === 0 || shortCount === 0) {
             strategyReturns.push({ date: dates[i], return: 0 });
             continue;
         }
-        
+
         const weights = new Array(nJp).fill(0);
         for (let j = 0; j < nJp; j++) {
-            if (signalPca[j] > pcaMedian && momentum[j] > momMedian) {
+            if (signalPca[j] > pcaHigh && momentum[j] > momHigh) {
                 weights[j] = 1.0 / longCount;
-            } else if (signalPca[j] < pcaMedian && momentum[j] < momMedian) {
+            } else if (signalPca[j] < pcaLow && momentum[j] < momLow) {
                 weights[j] = -1.0 / shortCount;
             }
         }
