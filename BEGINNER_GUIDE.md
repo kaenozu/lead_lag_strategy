@@ -39,6 +39,21 @@
 
 ## 🚀 始め方
 
+### よく使うコマンド（npm）
+
+| コマンド | 内容 |
+|----------|------|
+| `npm install` | 依存パッケージのインストール |
+| `npm run doctor` | 環境・`data/`・`results/` 書き込みの事前チェック |
+| `npm run setup` | 初回: データ取得とバックテスト（`backtest_improved.js`） |
+| `npm run signal` | 毎日: シグナル生成（`generate_signal.js`） |
+| `npm run server` / `npm start` | Web UI（http://localhost:3000。`start` は `server` と同じ） |
+| `npm run analysis` | 過去パフォーマンスの分析 |
+| `npm test` | 自動テスト（`doctor:ci` 軽量チェック含む） |
+| `npm run paper` | ペーパートレードのデモ（仮想取引サンプル・結果は `results/`） |
+
+どのスクリプトが推奨かは **README.md の「どのファイルを使うか」表** を参照してください。
+
 ### ステップ 1: 必要なものを準備
 
 1. **証券口座**
@@ -57,25 +72,34 @@
 
 ### ステップ 2: セットアップ
 
-```bash
-# 1. プロジェクトディレクトリに移動
-cd c:\gemini-desktop\lead_lag_strategy
+クローンしたフォルダ名に合わせてディレクトリに移動してください（例では `lead_lag_strategy` とします）。
 
-# 2. 依存パッケージをインストール
+```bash
+cd lead_lag_strategy
+
 npm install
 
-# 3. データ取得（初回のみ）
-node backtest_improved.js
+# 初回・データ更新: Yahoo から data/*.csv を取得しバックテスト（数分かかります）
+npm run setup
+# 同等: node backtest_improved.js
 ```
+
+**なぜ先に `setup` か:** `generate_signal.js` は **ローカルの `data/` の CSV** だけを読みます。`data/` が空のままだとシグナルが出ません。必ず一度 `npm run setup` を成功させてください。
 
 ### ステップ 3: 毎日の運用
 
 #### 朝（8:00-9:00）
 
 ```bash
-# シグナルを生成
-node generate_signal.js
+npm run signal
+# 同等: node generate_signal.js
 ```
+
+#### ブラウザでシグナルを見る場合（任意）
+
+別ターミナルで `npm run server` を起動し、**http://localhost:3000** を開きます。API が Yahoo から直接データを取るため、CLI の `signal` と同時に必須ではありません。
+
+**開発者向け:** HTTP でサーバー設定を書き換える `POST /api/config` を使う場合のみ、起動前に環境変数 `ALLOW_CONFIG_MUTATION=1` が必要です。通常の利用では不要です。
 
 出力例：
 ```
@@ -183,9 +207,10 @@ node generate_signal.js
 
 ### 読むべき資料
 
-1. `PROJECT_PLAN.md` - 戦略の詳細計画
-2. `README.md` - 実装レポート
-3. `results/backtest_summary_*.csv` - バックテスト結果
+1. `README.md` - **はじめに**（npm コマンド・どのファイルを使うかの表）
+2. `BEGINNER_GUIDE.md` - 本ガイド（運用手順）
+3. `PROJECT_PLAN.md` - 戦略の詳細計画
+4. `results/backtest_summary_*.csv` - バックテスト結果
 
 ### 理解を深めるには
 
@@ -219,8 +244,8 @@ node generate_signal.js
 
 ```
 解決法:
-1. `backtest_improved.js` を再実行
-2. data/ フォルダに CSV があるか確認
+1. npm run setup（または node backtest_improved.js）を再実行して data/*.csv を揃える
+2. data/ フォルダに米国・日本の各ティッカー用 CSV があるか確認
 3. エラーメッセージを保存して開発者に報告
 ```
 

@@ -1,19 +1,29 @@
 {
   "name": "lead_lag_strategy",
   "version": "1.0.0",
-  "description": "日米業種リードラグ投資戦略 - 部分空間正則化付きPCA",
+  "description": "日米業種 ETF のリードラグ戦略（部分空間正則化 PCA）のバックテスト・シグナル生成ツール",
   "main": "backtest.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaenozu/lead_lag_strategy.git"
+  },
   "scripts": {
-    "test": "jest --coverage",
+    "setup": "node backtest_improved.js",
+    "signal": "node generate_signal.js",
+    "start": "node server.js",
+    "server": "node server.js",
+    "analysis": "node analysis.js",
+    "doctor": "node doctor.js",
+    "doctor:ci": "node doctor.js --light",
+    "paper": "node paper_trading.js",
+    "paper-trade": "node paper_trading.js",
+    "backtest": "node backtest_real.js",
+    "test": "node test_unit.js && node --check server.js && node --check backtest_improved.js && node --check backtest_real.js && node --check generate_signal.js && node --check analysis.js && node --check doctor.js && node --check paper_trading.js && npm run doctor:ci && jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "server": "node server.js",
-    "backtest": "node backtest_real.js",
-    "signal": "node generate_signal.js",
-    "paper-trade": "node paper_trading.js"
+    "test:e2e:ui": "playwright test --ui"
   },
   "keywords": [
     "trading",

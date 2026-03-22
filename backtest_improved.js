@@ -5,6 +5,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
+const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
+const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./sector_constants');
 
 // ============================================================================
 // 設定
@@ -23,30 +28,6 @@ const PARAM_GRID = {
     windowLength: [40, 60],
     lambdaReg: [0.9, 0.95],
     quantile: [0.3, 0.4],
-};
-
-// 米国セクター ETF
-const US_ETF_TICKERS = [
-    'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'
-];
-
-// 日本セクター ETF
-const JP_ETF_TICKERS = [
-    '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
-    '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
-    '1631.T', '1632.T', '1633.T'
-];
-
-// セクターラベル（改良版：より詳細に分類）
-const SECTOR_LABELS = {
-    'US_XLB': 'cyclical', 'US_XLE': 'cyclical', 'US_XLF': 'cyclical', 'US_XLRE': 'cyclical',
-    'US_XLK': 'defensive', 'US_XLP': 'defensive', 'US_XLU': 'defensive', 'US_XLV': 'defensive',
-    'US_XLI': 'cyclical', 'US_XLC': 'neutral', 'US_XLY': 'cyclical',
-    'JP_1618.T': 'cyclical', 'JP_1625.T': 'cyclical', 'JP_1629.T': 'cyclical', 'JP_1631.T': 'cyclical',
-    'JP_1617.T': 'defensive', 'JP_1621.T': 'defensive', 'JP_1627.T': 'defensive', 'JP_1630.T': 'defensive',
-    'JP_1619.T': 'cyclical', 'JP_1620.T': 'cyclical', 'JP_1622.T': 'cyclical', 'JP_1623.T': 'cyclical',
-    'JP_1624.T': 'cyclical', 'JP_1626.T': 'neutral', 'JP_1628.T': 'cyclical', 'JP_1632.T': 'cyclical',
-    'JP_1633.T': 'defensive',
 };
 
 // ============================================================================
@@ -98,174 +79,6 @@ function loadLocalData(dataDir, tickers) {
 }
 
 // ============================================================================
-// 線形代数
-// ============================================================================
-
-function transpose(m) { return m[0].map((_, i) => m.map(r => r[i])); }
-function dotProduct(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
-function norm(v) { return Math.sqrt(v.reduce((s, x) => s + x * x, 0)); }
-function normalize(v) { const n = norm(v); return n > 1e-10 ? v.map(x => x / n) : v; }
-function diag(m) { return m.map((r, i) => r[i]); }
-function makeDiag(v) {
-    const n = v.length;
-    const r = new Array(n).fill(0).map(() => new Array(n).fill(0));
-    for (let i = 0; i < n; i++) r[i][i] = v[i];
-    return r;
-}
-
-function matmul(A, B) {
-    const rowsA = A.length, colsA = A[0].length, colsB = B[0].length;
-    const result = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0));
-    for (let i = 0; i < rowsA; i++)
-        for (let j = 0; j < colsB; j++)
-            for (let k = 0; k < colsA; k++)
-                result[i][j] += A[i][k] * B[k][j];
-    return result;
-}
-
-function eigenDecposition(matrix, k = 3) {
-    const n = matrix.length;
-    const eigenvalues = [], eigenvectors = [];
-    let A = matrix.map(r => [...r]);
-    
-    for (let e = 0; e < k; e++) {
-        // べき乗法: 決定論的な初期化（列eの値を使用、ゼロの場合は単位ベクトル）
-        let v = new Array(n).fill(0).map((_, i) => matrix[i][e] || 0);
-        const vNorm = norm(v);
-        if (vNorm < 1e-10) {
-            v = new Array(n).fill(0).map((_, i) => (i === e % n) ? 1 : 0);
-        }
-        v = normalize(v);
-        for (let iter = 0; iter < 500; iter++) {
-            let vNew = new Array(n).fill(0);
-            for (let i = 0; i < n; i++)
-                for (let j = 0; j < n; j++) vNew[i] += A[i][j] * v[j];
-            const nn = norm(vNew);
-            if (nn < 1e-10) break;
-            v = normalize(vNew);
-        }
-        const Av = new Array(n).fill(0);
-        for (let i = 0; i < n; i++)
-            for (let j = 0; j < n; j++) Av[i] += A[i][j] * v[j];
-        eigenvalues.push(dotProduct(v, Av));
-        eigenvectors.push(v);
-        for (let i = 0; i < n; i++)
-            for (let j = 0; j < n; j++)
-                A[i][j] -= eigenvalues[e] * v[i] * v[j];
-    }
-    return { eigenvalues, eigenvectors };
-}
-
-function correlationMatrix(data) {
-    const n = data.length, m = data[0].length;
-    const means = new Array(m).fill(0);
-    for (let j = 0; j < m; j++) {
-        for (let i = 0; i < n; i++) means[j] += data[i][j];
-        means[j] /= n;
-    }
-    const stds = new Array(m).fill(0);
-    for (let j = 0; j < m; j++) {
-        let ss = 0;
-        for (let i = 0; i < n; i++) { const d = data[i][j] - means[j]; ss += d * d; }
-        stds[j] = Math.sqrt(ss / n);
-    }
-    const std = new Array(n).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < n; i++)
-        for (let j = 0; j < m; j++)
-            std[i][j] = stds[j] > 1e-10 ? (data[i][j] - means[j]) / stds[j] : 0;
-    
-    const corr = new Array(m).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < m; i++)
-        for (let j = 0; j < m; j++) {
-            let s = 0;
-            for (let k = 0; k < n; k++) s += std[k][i] * std[k][j];
-            corr[i][j] = s / n;
-        }
-    return corr;
-}
-
-// ============================================================================
-// PCA & シグナル
-// ============================================================================
-
-class SubspacePCA {
-    constructor(config) { this.config = config; this.C0 = null; }
-    
-    buildPriorSpace(nUs, nJp, labels, CFull) {
-        const N = nUs + nJp;
-        const keys = Object.keys(labels);
-        
-        let v1 = normalize(new Array(N).fill(1));
-        let v2 = new Array(N).fill(0);
-        for (let i = 0; i < nUs; i++) v2[i] = 1;
-        for (let i = nUs; i < N; i++) v2[i] = -1;
-        v2 = normalize(v2.map((x, i) => x - dotProduct(v2, v1) * v1[i]));
-        
-        let v3 = new Array(N).fill(0);
-        for (let i = 0; i < N; i++) {
-            if (labels[keys[i]] === 'cyclical') v3[i] = 1;
-            else if (labels[keys[i]] === 'defensive') v3[i] = -1;
-        }
-        v3 = v3.map((x, i) => x - dotProduct(v3, v1) * v1[i] - dotProduct(v3, v2) * v2[i]);
-        v3 = normalize(v3);
-        
-        const V0 = new Array(N).fill(0).map((_, i) => [v1[i], v2[i], v3[i]]);
-        const CFullV0 = matmul(CFull, V0);
-        const D0 = diag(matmul(transpose(V0), CFullV0));
-        const C0Raw = matmul(matmul(V0, makeDiag(D0)), transpose(V0));
-        const delta = diag(C0Raw);
-        const inv = delta.map(x => 1 / Math.sqrt(Math.abs(x) + 1e-10));
-        let C0 = matmul(matmul(makeDiag(inv), C0Raw), makeDiag(inv));
-        for (let i = 0; i < N; i++) C0[i][i] = 1;
-        this.C0 = C0;
-    }
-    
-    compute(returns, labels, CFull) {
-        const nUs = Object.keys(labels).filter(k => k.startsWith('US_')).length;
-        const nJp = Object.keys(labels).filter(k => k.startsWith('JP_')).length;
-        if (!this.C0) this.buildPriorSpace(nUs, nJp, labels, CFull);
-        
-        const CT = correlationMatrix(returns);
-        const N = CT.length;
-        const CReg = new Array(N).fill(0).map(() => new Array(N).fill(0));
-        for (let i = 0; i < N; i++)
-            for (let j = 0; j < N; j++)
-                CReg[i][j] = (1 - this.config.lambdaReg) * CT[i][j] + this.config.lambdaReg * this.C0[i][j];
-        
-        const { eigenvectors } = eigenDecposition(CReg, this.config.nFactors);
-        return transpose(eigenvectors);
-    }
-}
-
-class LeadLagSignal {
-    constructor(config) { this.config = config; this.pca = new SubspacePCA(config); }
-    
-    compute(retUs, retJp, retUsLatest, labels, CFull) {
-        const nSamples = retUs.length, nUs = retUs[0].length, nJp = retJp[0].length;
-        const combined = retUs.map((r, i) => [...r, ...retJp[i]]);
-        const N = nUs + nJp;
-        
-        const mu = new Array(N).fill(0);
-        const sigma = new Array(N).fill(0);
-        for (let j = 0; j < N; j++) {
-            for (let i = 0; i < nSamples; i++) mu[j] += combined[i][j];
-            mu[j] /= nSamples;
-            let ss = 0;
-            for (let i = 0; i < nSamples; i++) { const d = combined[i][j] - mu[j]; ss += d * d; }
-            sigma[j] = Math.sqrt(ss / nSamples) + 1e-10;
-        }
-        
-        const std = combined.map(r => r.map((x, j) => (x - mu[j]) / sigma[j]));
-        const VK = this.pca.compute(std, labels, CFull);
-        
-        const VUs = VK.slice(0, nUs), VJp = VK.slice(nUs);
-        const zLatest = retUsLatest.map((x, j) => (x - mu[j]) / sigma[j]);
-        const fT = VUs.map(v => dotProduct(v, zLatest));
-        return VJp.map(v => dotProduct(v, fT));
-    }
-}
-
-// ============================================================================
 // ポートフォリオ & パフォーマンス
 // ============================================================================
 
@@ -298,71 +111,6 @@ function computeMetrics(returns, ann = 252) {
 // ============================================================================
 // データ処理
 // ============================================================================
-
-function computeReturns(ohlc, type = 'cc') {
-    if (type === 'cc') {
-        const ret = [];
-        let prev = null;
-        for (const r of ohlc) {
-            if (prev !== null) ret.push({ date: r.date, return: (r.close - prev) / prev });
-            prev = r.close;
-        }
-        return ret;
-    } else {
-        return ohlc.filter(r => r.open > 0).map(r => ({
-            date: r.date, return: (r.close - r.open) / r.open
-        }));
-    }
-}
-
-function buildMatrices(usData, jpData) {
-    const usTickers = Object.keys(usData), jpTickers = Object.keys(jpData);
-    
-    const usCC = {}, jpCC = {}, jpOC = {};
-    for (const t of usTickers) usCC[t] = computeReturns(usData[t], 'cc');
-    for (const t of jpTickers) {
-        jpCC[t] = computeReturns(jpData[t], 'cc');
-        jpOC[t] = computeReturns(jpData[t], 'oc');
-    }
-    
-    const usMap = new Map(), jpCCMap = new Map(), jpOCMap = new Map();
-    for (const t in usCC)
-        for (const r of usCC[t]) {
-            if (!usMap.has(r.date)) usMap.set(r.date, {});
-            usMap.get(r.date)[t] = r.return;
-        }
-    for (const t in jpCC) {
-        for (const r of jpCC[t]) {
-            if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
-            jpCCMap.get(r.date)[t] = r.return;
-        }
-        for (const r of jpOC[t]) {
-            if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {});
-            jpOCMap.get(r.date)[t] = r.return;
-        }
-    }
-    
-    const usDates = new Set([...usMap.keys()].sort());
-    const jpDates = new Set([...jpCCMap.keys()].sort());
-    const common = [...usDates].filter(d => jpDates.has(d)).sort();
-    
-    const retUs = [], retJp = [], retJpOc = [], dates = [];
-    for (let i = 1; i < common.length; i++) {
-        const usDate = common[i - 1], jpDate = common[i];
-        const usRow = usTickers.map(t => usMap.get(usDate)?.[t] ?? null);
-        const jpRow = jpTickers.map(t => jpCCMap.get(jpDate)?.[t] ?? null);
-        const jpOcRow = jpTickers.map(t => jpOCMap.get(jpDate)?.[t] ?? null);
-        
-        if (usRow.some(v => v === null) || jpRow.some(v => v === null) || jpOcRow.some(v => v === null)) continue;
-        
-        retUs.push({ date: usDate, values: usRow });
-        retJp.push({ date: jpDate, values: jpRow });
-        retJpOc.push({ date: jpDate, values: jpOcRow });
-        dates.push(jpDate);
-    }
-    
-    return { retUs, retJp, retJpOc, dates };
-}
 
 function computeCFull(retUs, retJp) {
     const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
@@ -537,7 +285,7 @@ async function main() {
 
     // データ処理
     console.log('\n[3/5] データ処理中...');
-    const { retUs, retJp, retJpOc, dates } = buildMatrices(usData, jpData);
+    const { retUs, retJp, retJpOc, dates } = buildLeadLagMatrices(usData, jpData, US_ETF_TICKERS, JP_ETF_TICKERS);
     console.log(`  取引日数：${dates.length}, 期間：${dates[0]} ~ ${dates[dates.length - 1]}`);
     
     if (dates.length < 100) {
@@ -559,7 +307,7 @@ async function main() {
     const metricsSub = computeMetrics(resultsSub.map(r => r.return));
     
     // MOM
-    const resultsMom = runStrategy(retUs, retJp, retJpOc, { ...optConfig, lambdaReg: 0 }, retJp, null, true);
+    const resultsMom = runStrategy(retUs, retJp, retJpOc, { ...optConfig, lambdaReg: 0 }, SECTOR_LABELS, CFull, true);
     const metricsMom = computeMetrics(resultsMom.map(r => r.return));
     
     // DOUBLE

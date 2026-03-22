@@ -269,9 +269,9 @@ async function main() {
     console.log('='.repeat(70));
 
     console.log('\n💡 使い方:');
-    console.log('1. generate_signal.js でシグナルを生成');
-    console.log('2. このツールで仮想取引を記録');
-    console.log('3. 毎日 endOfDay() で評価');
+    console.log('1. npm run signal でシグナルを生成（または Web UI）');
+    console.log('2. npm run paper でこのデモを実行（独自に PaperTrader を組み込む場合は本ファイルを参照）');
+    console.log('3. 本番運用では毎日 endOfDay() で評価する想定');
     console.log('4. 月末に getMetrics() でパフォーマンス確認');
 }
 
