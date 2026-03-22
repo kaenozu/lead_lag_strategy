@@ -1,47 +1,38 @@
 # 日米業種リードラグ戦略 - 実装レポート
 
-## はじめに（初心者向け）
-
-このリポジトリは**投資助言ではなく**、研究・検証用のコードです。実取引は**自己責任**で、元本割れの可能性があります。
-
-**まず読む:** 運用の考え方と手順は **[BEGINNER_GUIDE.md](BEGINNER_GUIDE.md)** にまとめています。
-
-### 最短の手順（推奨）
-
-エントリポイントは **`package.json` の npm scripts** を使うのが確実です（`main` の `backtest.js` は実験用が混ざった大きなファイルなので、初心者は実行不要です）。
-
-```bash
-cd lead_lag_strategy    # クローンしたディレクトリ名に合わせてください
-npm install
-npm run doctor          # 任意: Node / data/ / results 書き込みを事前チェック
-npm run setup           # 初回: Yahoo から data/*.csv を取得しバックテスト（数分〜）
-npm run signal          # 毎日: ローカル data からシグナル（results/ に出力）
-```
-
-- **Web UI**（ブラウザでシグナル・バックテスト）: 別ターミナルで `npm run server` または **`npm start`**（同じ）→ ブラウザで **http://localhost:3000** を開く。
-- **過去パフォーマンスの分析**: `npm run analysis`（`results/analysis_report.json` など）。
-- **テスト**: `npm test`（ユニット・構文チェック・`doctor:ci` 軽量チェックを含む）
-- **ペーパートレード（デモ）**: `npm run paper`（仮想約定のサンプルと `results/paper_trading_*.csv`）
-
-### どのファイルを使うか
-
-| 分類 | ファイル | 用途 |
-|------|-----------|------|
-| **まず使う** | `backtest_improved.js` | データ取得・パラメータ探索・バックテスト（`npm run setup`） |
-| | `generate_signal.js` | 毎日のシグナル（`npm run signal`） |
-| | `server.js` | Web API と静的 UI（`npm run server`） |
-| | `analysis.js` | 年次・レジーム等の分析（`npm run analysis`） |
-| **設定の参照** | `sector_constants.js` | 米日 ETF ティッカーとセクターラベル |
-| | `lib/lead_lag_core.js` | PCA・シグナル計算の数値コア |
-| | `lib/lead_lag_matrices.js` | リターン行列構築（JP の寄り大引けリターンを分離） |
-| **参考** | `subspace_pca.py` | Python 版（論文実装イメージ） |
-| **実験・旧版** | `backtest.js`, `backtest_v*.js`, `backtest_*.js`（上記以外） | 比較・検証用。迷ったら触らなくてよい |
-
----
-
 ## 概要
 
 部分空間正則化付き PCA を用いた日米業種リードラグ投資戦略を実装し、実市場データ（2018-2025 年）でバックテストを実施。
+
+## プロジェクト構造
+
+```
+lead_lag_strategy/
+├── lib/                          # 共通ライブラリ
+│   ├── index.js                 # エントリーポイント
+│   ├── math.js                  # 線形代数関数
+│   ├── pca.js                  # PCAクラス
+│   ├── portfolio.js             # ポートフォリオ構築
+│   ├── data.js                 # データ処理
+│   ├── logger.js               # 構造化ログ
+│   └── config.js                # 設定管理
+├── tests/                       # テスト
+│   └── lib/
+│       ├── math.test.js
+│       ├── pca.test.js
+│       ├── portfolio.test.js
+│       └── config.test.js
+├── public/
+│   └── index.html               # Web UI
+├── server.js                    # APIサーバー
+├── generate_signal.js           # シグナル生成スクリプト
+├── backtest_real.js            # バックテスト
+├── backtest_improved.js        # 改良版バックテスト
+├── paper_trading.js            # ペーパートレード
+├── .env.example                # 環境変数テンプレート
+├── package.json
+└── jest.config.js
+```
 
 ## 結果サマリー
 
@@ -60,73 +51,78 @@ npm run signal          # 毎日: ローカル data からシグナル（results
 | **PCA SUB** | **6.93** | **8.33** | **0.83** | **-20.63** | **56.59** |
 | DOUBLE | 0.29 | 16.35 | 0.02 | -38.19 | -6.83 |
 
-### 論文結果との比較
+## 主な改善点
 
-| 指標 | 論文 (2010-2025) | 本実装 (2018-2025) |
-|------|-----------------|-------------------|
-| AR | 23.79% | 6.93% |
-| R/R | 2.22 | 0.83 |
-| MDD | 9.58% | -20.63% |
+### コード品質向上
+- **共通ライブラリ化**: 線形代数関数を `lib/math.js` に集約
+- **エラーハンドリング**: 全関数にtry-catchと入力検証を追加
+- **構造化ログ**: Winstonによるログ機能 (`lib/logger.js`)
+- **設定外部化**: 環境変数による設定管理 (`lib/config.js`)
+- **ユニットテスト**: Jestによるテストフレームワーク
 
-## 主な発見
+### 新機能
+- **Web APIサーバー**: `server.js` - リアルタイムシグナル生成
+- **シグナル生成スクリプト**: `generate_signal.js` - CLIから実行可能
+- **設定ファイル**: `.env.example` - 環境変数テンプレート
 
-1. **パラメータ最適化の効果**: λ=0.9（強い正則化）が選択され、推定誤差を抑制
-2. **PCA SUB の優位性**: 単純モメンタムを大きく上回るパフォーマンス
-3. **リスク特性の改善**: PCA SUB はリスク 8.33% と最も低く効率的
-4. **累積リターン**: 7 年間で +56.59%（年率 6.93%）
-
-## 実装ファイル（ディレクトリ構成）
-
-```
-lead_lag_strategy/
-├── backtest_improved.js    # 推奨: データ取得・バックテスト（npm run setup）
-├── generate_signal.js      # 推奨: シグナル（npm run signal）
-├── server.js               # Web UI（npm run server）
-├── analysis.js             # 分析（npm run analysis）
-├── sector_constants.js     # ティッカー・セクター定義
-├── lib/lead_lag_core.js   # PCA / シグナル数値コア
-├── lib/lead_lag_matrices.js
-├── backtest_real.js        # 実市場データ版（実験系）
-├── backtest.js             # サンプル・実験（npm main だが初心者は不要）
-├── subspace_pca.py         # Python 版（参考用）
-├── data/                   # 取得した ETF データ（setup 後に生成）
-└── results/                # バックテスト・シグナル出力
-    ├── backtest_summary_improved.csv
-    ├── optimal_parameters.csv
-    ├── cumulative_*.csv
-    └── index.html          # 結果可視化
-```
+### 論文準拠・再現性（環境変数）
+- **`BACKTEST_DATA_MODE`**: `yahoo`（既定・近似）または `csv`（`DATA_DIR` の公式 CSV を読む）
+- **`BACKTEST_JP_WINDOW_RETURN`**: 推定窓の日本側リターンを `cc`（既定）または `oc` に切替（Python `SubspacePCAConfig.jp_window_return` と対応）
+- 日付アライメントは各**日本営業日**に対し、**直前の米国営業日**の CC を対応づける（`lib/data.js` の `alignDates`）
+- PCA は **`np.corrcoef` 相当**の標本相関と **対称ヤコビ法**による固有分解（`lib/math.js`）
 
 ## 実行方法
 
-推奨は npm 経由です。
-
+### 依存関係インストール
 ```bash
 npm install
-npm run setup    # 初回・データ更新時（ネットワーク利用、時間がかかります）
-npm run signal   # ローカル data/ が揃っている必要があります
 ```
 
-同等の直接実行:
-
+### シグナル生成
 ```bash
-node backtest_improved.js
+# デフォルト設定
 node generate_signal.js
+
+# パラメータ指定
+node generate_signal.js --window 60 --lambda 0.9 --quantile 0.4
 ```
 
-Web サーバー:
-
+### Webサーバー起動
 ```bash
 npm run server
-# または npm start（同じ）
-# http://localhost:3000 — API の設定を HTTP で書き換える場合のみ
-# 環境変数 ALLOW_CONFIG_MUTATION=1 が必要です（通常は不要）。
+# http://localhost:3000 でアクセス
 ```
 
-開発・CI:
+### バックテスト実行
+```bash
+npm run backtest
+```
 
-- `npm run doctor:ci` … `data/` なしでも通る Node / `results/` 書き込みチェック（`npm test` に含みます）
-- `npm run paper` … ペーパートレード API のデモ実行
+### テスト実行
+```bash
+# 全テスト
+npm test
+
+# ウォッチモード
+npm run test:watch
+
+# リント
+npm run lint
+```
+
+## 設定
+
+`.env.example` を `.env` にコピーして必要に応じて変更：
+
+```bash
+cp .env.example .env
+```
+
+主要設定項目：
+- `WINDOW_LENGTH`: ウィンドウ長（デフォルト: 60）
+- `LAMBDA_REG`: 正則化パラメータ（デフォルト: 0.9）
+- `QUANTILE`: 分位点（デフォルト: 0.3）
+- `LOG_LEVEL`: ログレベル（デフォルト: info）
 
 ## 考察
 

@@ -1,221 +1,353 @@
 /**
- * シグナル生成ツール - 初心者向け
- *
- * 毎日の売買指示を具体的な金額とともに出力
+ * シグナル生成スクリプト
+ * Usage: node generate_signal.js [--window 60] [--lambda 0.9] [--quantile 0.4]
  */
+
+'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
-const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES, SECTOR_LABELS } = require('./sector_constants');
 
-// 設定
-const CONFIG = {
-    windowLength: 40,
-    nFactors: 3,
-    lambdaReg: 0.95,
-    quantile: 0.3,
-    warmupPeriod: 40,
+// ライブラリ
+const { createLogger } = require('./lib/logger');
+const { config } = require('./lib/config');
+const { LeadLagSignal } = require('./lib/pca');
+const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
+const { correlationMatrixSample } = require('./lib/math');
+const { loadCSV, buildPaperAlignedReturnRows } = require('./lib/data');
+
+const logger = createLogger('SignalGenerator');
+
+// 米国セクター ETF
+const US_ETF_TICKERS = [
+  'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP',
+  'XLRE', 'XLU', 'XLV', 'XLY'
+];
+
+// 日本セクター ETF
+const JP_ETF_TICKERS = [
+  '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
+  '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
+  '1631.T', '1632.T', '1633.T'
+];
+
+const JP_ETF_NAMES = {
+  '1617.T': '食品', '1618.T': 'エネルギー資源', '1619.T': '建設・資材',
+  '1620.T': '素材・化学', '1621.T': '医薬品', '1622.T': '自動車・輸送機',
+  '1623.T': '鉄鋼・非鉄', '1624.T': '機械', '1625.T': '電機・精密',
+  '1626.T': '情報通信', '1627.T': '電力・ガス', '1628.T': '運輸・物流',
+  '1629.T': '商社・卸売', '1630.T': '小売', '1631.T': '銀行',
+  '1632.T': '証券・商品', '1633.T': '保険'
 };
 
-function printFatal(title, lines) {
-    console.error('\n' + '='.repeat(70));
-    console.error(`【${title}】`);
-    for (const l of lines) console.error(`  ${l}`);
-    console.error('');
-    console.error('次の手順:');
-    console.error('  npm run doctor   … data/ や Node の状態を確認');
-    console.error('  npm run setup    … Yahoo から data/*.csv を取得（初回・不足時）');
-    console.error('  npm run signal    … このコマンドを再実行');
-    console.error('='.repeat(70));
-    process.exit(1);
-}
-
-function listDataProblems(dataDir) {
-    const problems = [];
-    for (const t of [...US_ETF_TICKERS, ...JP_ETF_TICKERS]) {
-        const f = path.join(dataDir, `${t}.csv`);
-        if (!fs.existsSync(f)) {
-            problems.push(`${t}.csv が存在しません`);
-            continue;
-        }
-        const lines = fs.readFileSync(f, 'utf-8').split('\n').filter(l => l.trim());
-        if (lines.length <= 1) {
-            problems.push(`${t}.csv にデータ行がありません`);
-        }
+/**
+ * Yahoo Financeからデータを取得
+ */
+async function fetchData(ticker, days = 200) {
+  if (config.data.mode === 'csv') {
+    const filePath = path.join(path.resolve(config.data.dataDir), `${ticker}.csv`);
+    if (!fs.existsSync(filePath)) {
+      logger.error(`CSV not found: ${filePath}`);
+      return [];
     }
-    return problems;
-}
-
-function loadLocalData(dataDir, tickers) {
-    const results = {};
-    for (const t of tickers) {
-        const f = path.join(dataDir, `${t}.csv`);
-        if (fs.existsSync(f)) {
-            const lines = fs.readFileSync(f, 'utf-8').split('\n').slice(1).filter(l => l.trim());
-            results[t] = lines.map(l => {
-                const p = l.split(',');
-                return { date: p[0], open: +p[1], close: +p[4] };
-            });
-        } else results[t] = [];
-    }
-    return results;
-}
-
-function computeCFull(retUs, retJp) {
-    return correlationMatrix(retUs.map((r, i) => [...r.values, ...retJp[i].values]));
-}
-
-function generateSignal(retUs, retJp, retJpOc, config, sectorLabels, CFull) {
-    const nJp = JP_ETF_TICKERS.length;
-    const signalGen = new LeadLagSignal(config);
-    const i = retJpOc.length - 1;
-    const usWin = retUs.slice(i - config.windowLength, i).map(r => r.values);
-    const jpWin = retJp.slice(i - config.windowLength, i).map(r => r.values);
-    const usLatest = retUs[i - 1].values;
-    const signal = signalGen.compute(usWin, jpWin, usLatest, sectorLabels, CFull);
-    const indexed = signal.map((val, idx) => ({ val, idx, ticker: JP_ETF_TICKERS[idx] })).sort((a, b) => a.val - b.val);
-    const q = Math.max(1, Math.floor(nJp * config.quantile));
-    return {
-        long: indexed.slice(-q).map(s => ({ ticker: s.ticker, sector: JP_ETF_NAMES[s.ticker], signal: s.val })),
-        short: indexed.slice(0, q).map(s => ({ ticker: s.ticker, sector: JP_ETF_NAMES[s.ticker], signal: s.val })),
-        all: indexed.map(s => ({ ticker: s.ticker, sector: JP_ETF_NAMES[s.ticker], signal: s.val })),
-    };
-}
-
-function calculateInvestment(longSignals, shortSignals, totalCapital = 1000000) {
-    const perPosition = Math.floor(totalCapital / (longSignals.length + shortSignals.length) / 100) * 100;
-    return {
-        long: longSignals.map(s => ({ ...s, amount: perPosition })),
-        short: shortSignals.map(s => ({ ...s, amount: perPosition })),
-        totalLong: perPosition * longSignals.length,
-        totalShort: perPosition * shortSignals.length,
-        remaining: totalCapital - (perPosition * (longSignals.length + shortSignals.length)),
-    };
-}
-
-async function main() {
-    console.log('='.repeat(70));
-    console.log('📈 日米業種リードラグ戦略 - シグナル生成ツール');
-    console.log('='.repeat(70));
-
-    const dataDir = path.join(__dirname, 'data');
-    const outputDir = path.join(__dirname, 'results');
-    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-    console.log('\n[1/3] データ読み込み中...');
-    const dataProblems = listDataProblems(dataDir);
-    if (dataProblems.length > 0) {
-        printFatal('data/ の CSV が不足しているか空です', [
-            'generate_signal はインターネットから取得せず、ローカルの data/*.csv のみを使います。',
-            ...dataProblems.slice(0, 12),
-            dataProblems.length > 12 ? `… 他 ${dataProblems.length - 12} 件` : '',
-        ].filter(Boolean));
-    }
-
-    const usData = loadLocalData(dataDir, US_ETF_TICKERS);
-    const jpData = loadLocalData(dataDir, JP_ETF_TICKERS);
-
-    console.log('[2/3] データ処理中...');
-    const { retUs, retJp, retJpOc, dates } = buildLeadLagMatrices(usData, jpData, US_ETF_TICKERS, JP_ETF_TICKERS);
-
-    if (!dates.length || !retJpOc.length) {
-        printFatal('米日の日付を整列しても取引行がありません', [
-            'data/*.csv の日付が極端にずれているか、共通セッションがありません。',
-        ]);
-    }
-
-    const minLen = CONFIG.windowLength + 1;
-    if (retJpOc.length < minLen) {
-        printFatal('履歴日数がシグナル計算に足りません', [
-            `整列後の日数: ${retJpOc.length} 日（必要目安: 少なくとも ${minLen} 日以上）`,
-            'ウィンドウ長を短くするか、より長い期間の CSV を取得してください。',
-        ]);
-    }
-
-    const CFull = computeCFull(retUs, retJp);
-    console.log(`  最終取引日：${dates[dates.length - 1]}`);
-
-    console.log('[3/3] シグナル生成中...\n');
-    let signal;
     try {
-        signal = generateSignal(retUs, retJp, retJpOc, CONFIG, SECTOR_LABELS, CFull);
-    } catch (e) {
-        printFatal('シグナル計算中にエラーが発生しました', [String(e.message || e), 'npm run doctor でデータ状態を確認してください。']);
+      const rows = loadCSV(filePath).map(row => ({
+        date: String(row.Date || row.date || '').split('T')[0],
+        open: Number(row.Open ?? row.open),
+        high: Number(row.High ?? row.high),
+        low: Number(row.Low ?? row.low),
+        close: Number(row.Close ?? row.close),
+        volume: Number(row.Volume ?? row.volume ?? 0)
+      })).filter(r => r.date && Number.isFinite(r.close) && r.close > 0);
+      return days > 0 && rows.length > days ? rows.slice(-days) : rows;
+    } catch (error) {
+      logger.error(`Failed to load ${ticker}`, { error: error.message });
+      return [];
     }
-    const investment = calculateInvestment(signal.long, signal.short, 1000000);
+  }
 
-    const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    console.log('='.repeat(70));
-    console.log(`📅 本日のシグナル（${today}）`);
-    console.log('='.repeat(70));
+  try {
+    const YahooFinance = require('yahoo-finance2').default;
+    const yahooFinance = new YahooFinance();
 
-    console.log('\n💰 推奨投資額（総額 100 万円の場合）');
-    console.log('-'.repeat(70));
-    console.log(`買い合計：${investment.totalLong.toLocaleString()}円`);
-    console.log(`売り合計：${investment.totalShort.toLocaleString()}円`);
-    console.log(`余力：${investment.remaining.toLocaleString()}円`);
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-    console.log('\n📊 買い銘柄（ロング）');
-    console.log('-'.repeat(70));
-    console.log('ランク  ティッカー  業種           投資額      シグナル値');
-    investment.long.forEach((s, i) => {
-        console.log(`  ${i + 1}      ${s.ticker.padEnd(8)}  ${s.sector.padEnd(10)}  ${s.amount.toLocaleString()}円  ${s.signal.toFixed(2)}`);
+    const result = await yahooFinance.chart(ticker, {
+      period1: startDate.toISOString().split('T')[0],
+      period2: endDate.toISOString().split('T')[0],
+      interval: '1d'
     });
 
-    console.log('\n📉 売り銘柄（ショート）');
-    console.log('-'.repeat(70));
-    console.log('ランク  ティッカー  業種           投資額      シグナル値');
-    investment.short.forEach((s, i) => {
-        console.log(`  ${i + 1}      ${s.ticker.padEnd(8)}  ${s.sector.padEnd(10)}  ${s.amount.toLocaleString()}円  ${s.signal.toFixed(2)}`);
-    });
-
-    console.log('\n' + '='.repeat(70));
-    console.log('📝 取引の注意点');
-    console.log('='.repeat(70));
-    console.log('1. 買い銘柄は「買って上昇を待つ」、売り銘柄は「空売りして下落を待つ」');
-    console.log('2. 各銘柄の投資額は均等配分（リスク分散）');
-    console.log('3. 朝 9:00 の寄り付き前に注文を出すのが理想');
-    console.log('4. 夕方の大引けで決済する（デイトレード）');
-    console.log('5. 週末はポジションを持たないのが安全');
-
-    console.log('\n' + '='.repeat(70));
-    console.log('⚠️ リスク警告');
-    console.log('='.repeat(70));
-    console.log('・元本割れの可能性があります');
-    console.log('・過去のパフォーマンスは将来を保証しません');
-    console.log('・余力を残して無理な取引はしないでください');
-    console.log('・このシグナルは投資助言ではありません');
-
-    const signalJson = {
-        date: dates[dates.length - 1],
-        generatedAt: new Date().toISOString(),
-        parameters: CONFIG,
-        signals: {
-            long: investment.long,
-            short: investment.short,
-        },
-        investment: {
-            totalLong: investment.totalLong,
-            totalShort: investment.totalShort,
-            remaining: investment.remaining,
-            totalCapital: 1000000,
-        },
-    };
-    fs.writeFileSync(path.join(outputDir, 'signal.json'), JSON.stringify(signalJson, null, 2));
-
-    const longCsv = 'Rank,Ticker,Sector,Amount,Signal\n' + investment.long.map((s, i) => `${i + 1},${s.ticker},${s.sector},${s.amount},${s.signal.toFixed(4)}`).join('\n');
-    const shortCsv = 'Rank,Ticker,Sector,Amount,Signal\n' + investment.short.map((s, i) => `${i + 1},${s.ticker},${s.sector},${s.amount},${s.signal.toFixed(4)}`).join('\n');
-    fs.writeFileSync(path.join(outputDir, 'signal_long.csv'), longCsv);
-    fs.writeFileSync(path.join(outputDir, 'signal_short.csv'), shortCsv);
-
-    console.log(`\n💾 保存完了：results/signal.json, signal_long.csv, signal_short.csv`);
-    console.log('='.repeat(70));
+    return result.quotes
+      .filter(q => q.close !== null && q.close > 0)
+      .map(q => ({
+        date: q.date.toISOString().split('T')[0],
+        open: q.open,
+        high: q.high,
+        low: q.low,
+        close: q.close,
+        volume: q.volume
+      }));
+  } catch (error) {
+    logger.error(`Failed to fetch ${ticker}`, { error: error.message });
+    return [];
+  }
 }
 
-main().catch((e) => {
-    console.error('\n予期しないエラー:', e);
-    console.error('npm run doctor で環境を確認し、npm run setup でデータを揃えてから再試行してください。\n');
+/**
+ * リターンを計算
+ */
+function computeReturns(ohlc, type = 'cc') {
+  if (!ohlc || ohlc.length < 2) return [];
+
+  if (type === 'cc') {
+    const returns = [];
+    let prev = null;
+    for (const r of ohlc) {
+      if (prev !== null) {
+        returns.push({ date: r.date, return: (r.close - prev) / prev });
+      }
+      prev = r.close;
+    }
+    return returns;
+  } else {
+    return ohlc
+      .filter(r => r.open > 0)
+      .map(r => ({ date: r.date, return: (r.close - r.open) / r.open }));
+  }
+}
+
+/**
+ * コマンドライン引数を解析
+ */
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const options = {
+    windowLength: config.backtest.windowLength,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile,
+    save: true
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--window':
+      case '-w':
+        options.windowLength = parseInt(args[++i]);
+        break;
+      case '--lambda':
+      case '-l':
+        options.lambdaReg = parseFloat(args[++i]);
+        break;
+      case '--quantile':
+      case '-q':
+        options.quantile = parseFloat(args[++i]);
+        break;
+      case '--no-save':
+        options.save = false;
+        break;
+      case '--help':
+      case '-h':
+        console.log('Usage: node generate_signal.js [options]');
+        console.log('Options:');
+        console.log('  --window, -w <n>    Window length (default: 60)');
+        console.log('  --lambda, -l <n>    Lambda regularization (default: 0.9)');
+        console.log('  --quantile, -q <n>  Quantile (default: 0.4)');
+        console.log('  --no-save           Do not save results');
+        console.log('  --help, -h          Show this help');
+        process.exit(0);
+    }
+  }
+
+  return options;
+}
+
+/**
+ * メイン処理
+ */
+async function main() {
+  const options = parseArgs();
+
+  logger.info('Signal generation started', options);
+
+  // データ取得
+  console.log('\n📡 Fetching data from Yahoo Finance...');
+
+  const usData = {};
+  for (const ticker of US_ETF_TICKERS) {
+    process.stdout.write(`  ${ticker}... `);
+    usData[ticker] = await fetchData(ticker, options.windowLength + 50);
+    console.log(`${usData[ticker].length} days`);
+  }
+
+  const jpData = {};
+  for (const ticker of JP_ETF_TICKERS) {
+    process.stdout.write(`  ${ticker}... `);
+    jpData[ticker] = await fetchData(ticker, options.windowLength + 50);
+    console.log(`${jpData[ticker].length} days`);
+  }
+
+  const usCC = {};
+  const jpCC = {};
+  const jpOC = {};
+
+  for (const t of US_ETF_TICKERS) {
+    usCC[t] = computeReturns(usData[t], 'cc');
+  }
+  for (const t of JP_ETF_TICKERS) {
+    jpCC[t] = computeReturns(jpData[t], 'cc');
+    jpOC[t] = computeReturns(jpData[t], 'oc');
+  }
+
+  const usMap = new Map();
+  for (const t of US_ETF_TICKERS) {
+    for (const r of usCC[t]) {
+      if (!usMap.has(r.date)) usMap.set(r.date, {});
+      usMap.get(r.date)[t] = r.return;
+    }
+  }
+  const jpCCMap = new Map();
+  const jpOCMap = new Map();
+  for (const t of JP_ETF_TICKERS) {
+    for (const r of jpCC[t]) {
+      if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
+      jpCCMap.get(r.date)[t] = r.return;
+    }
+    for (const r of jpOC[t]) {
+      if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {});
+      jpOCMap.get(r.date)[t] = r.return;
+    }
+  }
+
+  const { retUs, retJp } = buildPaperAlignedReturnRows(
+    usMap,
+    jpCCMap,
+    jpOCMap,
+    US_ETF_TICKERS,
+    JP_ETF_TICKERS,
+    config.backtest.jpWindowReturn
+  );
+
+  console.log(`\n📊 Data prepared: ${retUs.length} trading days`);
+
+  if (retUs.length < options.windowLength) {
+    logger.error('Insufficient data');
+    console.error('Error: Insufficient data for window length');
     process.exit(1);
+  }
+
+  const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
+  const CFull = correlationMatrixSample(combined);
+
+  const signalGen = new LeadLagSignal({
+    lambdaReg: options.lambdaReg,
+    nFactors: config.backtest.nFactors,
+    orderedSectorKeys: config.pca.orderedSectorKeys
+  });
+
+  const retUsWin = retUs.slice(-options.windowLength).map(r => r.values);
+  const retJpWin = retJp.slice(-options.windowLength).map(r => r.values);
+  const retUsLatest = retUs[retUs.length - 1].values;
+
+  const signal = signalGen.computeSignal(
+    retUsWin,
+    retJpWin,
+    retUsLatest,
+    config.sectorLabels,
+    CFull
+  );
+
+  // ランキング作成
+  const signals = JP_ETF_TICKERS.map((ticker, i) => ({
+    ticker,
+    name: JP_ETF_NAMES[ticker] || ticker,
+    sector: config.sectorLabels[`JP_${ticker}`] || 'unknown',
+    signal: signal[i],
+    rank: 0
+  })).sort((a, b) => b.signal - a.signal);
+
+  signals.forEach((s, i) => s.rank = i + 1);
+
+  // 買い/売り候補
+  const buyCount = Math.max(1, Math.floor(JP_ETF_TICKERS.length * options.quantile));
+  const buyCandidates = signals.slice(0, buyCount);
+  const sellCandidates = signals.slice(-buyCount);
+
+  // 結果表示
+  console.log('\n' + '='.repeat(60));
+  console.log('📈 買い銘柄（ロング）');
+  console.log('='.repeat(60));
+  console.log('Rank  Ticker    業種           シグナル値');
+  console.log('-'.repeat(60));
+
+  buyCandidates.forEach((s, i) => {
+    console.log(
+      `${String(i + 1).padStart(4)}  ${s.ticker.padEnd(8)} ${s.name.padEnd(12)} ${(s.signal * 1000).toFixed(2)}`
+    );
+  });
+
+  console.log('\n' + '='.repeat(60));
+  console.log('📉 売り銘柄（ショート）');
+  console.log('='.repeat(60));
+  console.log('Rank  Ticker    業種           シグナル値');
+  console.log('-'.repeat(60));
+
+  sellCandidates.slice().reverse().forEach((s, i) => {
+    console.log(
+      `${String(buyCount - i).padStart(4)}  ${s.ticker.padEnd(8)} ${s.name.padEnd(12)} ${(s.signal * 1000).toFixed(2)}`
+    );
+  });
+
+  // シグナル統計
+  const meanSignal = signal.reduce((a, b) => a + b, 0) / signal.length;
+  const stdSignal = Math.sqrt(signal.reduce((sq, x) => sq + Math.pow(x - meanSignal, 2), 0) / signal.length);
+
+  console.log('\n' + '='.repeat(60));
+  console.log('📊 シグナル統計');
+  console.log('='.repeat(60));
+  console.log(`  平均: ${(meanSignal * 1000).toFixed(4)}`);
+  console.log(`  標準偏差: ${(stdSignal * 1000).toFixed(4)}`);
+  console.log(`  最大: ${(Math.max(...signal) * 1000).toFixed(4)}`);
+  console.log(`  最小: ${(Math.min(...signal) * 1000).toFixed(4)}`);
+
+  // 結果保存
+  if (options.save) {
+    const outputDir = config.data.outputDir;
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    const result = {
+      timestamp: new Date().toISOString(),
+      config: options,
+      signals,
+      buyCandidates,
+      sellCandidates,
+      statistics: { meanSignal, stdSignal }
+    };
+
+    const jsonPath = path.join(outputDir, 'signal.json');
+    fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
+
+    const csvPath = path.join(outputDir, 'signal_long.csv');
+    const csvContent = 'Rank,Ticker,Name,Sector,Signal\n' +
+      buyCandidates.map((s, i) =>
+        `${i + 1},${s.ticker},${s.name},${s.sector},${s.signal}`
+      ).join('\n');
+    fs.writeFileSync(csvPath, csvContent);
+
+    console.log(`\n💾 Results saved:`);
+    console.log(`  - ${jsonPath}`);
+    console.log(`  - ${csvPath}`);
+  }
+
+  logger.info('Signal generation completed');
+}
+
+main().catch(error => {
+  logger.error('Signal generation failed', { error: error.message, stack: error.stack });
+  console.error('Error:', error.message);
+  process.exit(1);
 });

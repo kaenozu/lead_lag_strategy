@@ -30,3 +30,6 @@ jobs:
     - run: npm run build --if-present
     # test 内に doctor:ci（data 無しでも通る軽量チェック）を含む
     - run: npm test
+    - name: Install Playwright Chromium
+      run: npx playwright install chromium --with-deps
+    - run: npm run test:e2e

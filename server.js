@@ -3,480 +3,731 @@
  * 銘柄選択シグナルをリアルタイムで生成
  */
 
+'use strict';
+
 const fs = require('fs');
-const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const YahooFinance = require('yahoo-finance2').default;
-const yahooFinance = new YahooFinance();
-const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES, SECTOR_LABELS } = require('./sector_constants');
+const rateLimit = require('express-rate-limit');
+const path = require('path');
+
+// ライブラリ
+const { createLogger } = require('./lib/logger');
+const { config, validate } = require('./lib/config');
+const {
+  SubspaceRegularizedPCA,
+  LeadLagSignal
+} = require('./lib/pca');
+const {
+  buildPortfolio,
+  computePerformanceMetrics,
+  applyTransactionCosts,
+  computeYearlyPerformance,
+  computeRollingMetrics
+} = require('./lib/portfolio');
+const {
+  correlationMatrixSample
+} = require('./lib/math');
+const {
+  fetchWithRetry,
+  loadCSV,
+  buildPaperAlignedReturnRows
+} = require('./lib/data');
+
+const logger = createLogger('Server');
 
 const app = express();
-const PORT = 3000;
+
+// ============================================
+// セキュリティ設定
+// ============================================
+
+// レート制限：API エンドポイントごと
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 分
+  max: 30, // 1 分あたり最大 30 リクエスト
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip
+});
+
+//  stricter rate limit for backtest endpoint
+const backtestLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 分
+  max: 10, // 5 分あたり最大 10 リクエスト
+  message: { error: 'Backtest requests are rate-limited to 10 per 5 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ============================================
+// ミドルウェア
+// ============================================
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // リクエストサイズ制限
 app.use(express.static('public'));
 
-// 設定
-const CONFIG = {
-    windowLength: 60,
-    nFactors: 3,
-    lambdaReg: 0.9,
-    quantile: 0.4,
-    warmupPeriod: 60,
+// API エンドポイントにレート制限を適用
+app.use('/api/', apiLimiter);
+app.use('/api/backtest', backtestLimiter);
+
+// ============================================
+// エラーハンドリング
+// ============================================
+
+// 404 エラー
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// 汎用エラーハンドラー（機密情報を除外）
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error', {
+    error: err.message,
+    path: req.path,
+    method: req.method
+  });
+
+  const isDev = config.server.isDevelopment;
+  res.status(500).json({
+    error: 'Internal server error',
+    message: isDev ? err.message : undefined,
+    ...(isDev && { stack: err.stack })
+  });
+});
+
+// 設定の検証
+const configErrors = validate();
+if (configErrors.length > 0) {
+  logger.warn('Configuration warnings', { warnings: configErrors });
+}
+
+// ============================================
+// 定数
+// ============================================
+
+const JP_ETF_TICKERS = [
+  '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
+  '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
+  '1631.T', '1632.T', '1633.T'
+];
+
+const JP_ETF_NAMES = {
+  '1617.T': '食品', '1618.T': 'エネルギー資源', '1619.T': '建設・資材',
+  '1620.T': '素材・化学', '1621.T': '医薬品', '1622.T': '自動車・輸送機',
+  '1623.T': '鉄鋼・非鉄', '1624.T': '機械', '1625.T': '電機・精密',
+  '1626.T': '情報通信', '1627.T': '電力・ガス', '1628.T': '運輸・物流',
+  '1629.T': '商社・卸売', '1630.T': '小売', '1631.T': '銀行',
+  '1632.T': '証券・商品', '1633.T': '保険'
 };
 
-function parseIntFinite(v, fallback) {
-    const x = parseInt(v, 10);
-    return Number.isFinite(x) ? x : fallback;
-}
+const US_ETF_TICKERS = [
+  'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'
+];
 
-function parseFloatFinite(v, fallback) {
-    const x = parseFloat(v);
-    return Number.isFinite(x) ? x : fallback;
-}
+// ============================================
+// 入力検証ヘルパー
+// ============================================
 
-let lastHeavyApiAt = 0;
-const HEAVY_API_MIN_MS = 2500;
+/**
+ * リクエストパラメータを検証・サニタイズ
+ */
+function validateBacktestParams(body) {
+  const errors = [];
+  const params = {};
 
-function allowHeavyApi(res) {
-    const now = Date.now();
-    if (now - lastHeavyApiAt < HEAVY_API_MIN_MS) {
-        const wait = Math.ceil((HEAVY_API_MIN_MS - (now - lastHeavyApiAt)) / 1000);
-        res.status(429).json({ error: 'リクエストが多すぎます。しばらく待ってから再試行してください。', retryAfterSec: wait });
-        return false;
-    }
-    lastHeavyApiAt = now;
-    return true;
-}
-
-/** CLI（generate_signal）用ローカル CSV の有無・鮮度。Web のシグナル API は Yahoo 直取得。 */
-function getLocalDataStatus() {
-    const dataDir = path.join(__dirname, 'data');
-    const need = [...new Set([...US_ETF_TICKERS, ...JP_ETF_TICKERS])];
-    const expected = need.length;
-    const out = {
-        webSignalSource: 'yahoo_finance_live',
-        dataDirExists: false,
-        expectedCsv: expected,
-        presentCsv: 0,
-        missingTickers: [],
-        newestMtimeMs: null,
-        newestIso: null,
-        newestTicker: null,
-        hintJa: null,
-    };
-    if (!fs.existsSync(dataDir)) {
-        out.hintJa =
-            'ターミナルで npm run setup を実行すると data/ に CSV が保存されます（generate_signal 用）。この画面のシグナルは Yahoo を都度参照します。';
-        return out;
-    }
-    out.dataDirExists = true;
-    const missing = [];
-    let newest = { ms: 0, ticker: null };
-    for (const t of need) {
-        const f = path.join(dataDir, `${t}.csv`);
-        if (!fs.existsSync(f)) {
-            missing.push(t);
-            continue;
-        }
-        out.presentCsv += 1;
-        const st = fs.statSync(f);
-        if (st.mtimeMs > newest.ms) newest = { ms: st.mtimeMs, ticker: t };
-    }
-    out.missingTickers = missing;
-    if (newest.ms > 0) {
-        out.newestMtimeMs = newest.ms;
-        out.newestIso = new Date(newest.ms).toISOString();
-        out.newestTicker = newest.ticker;
-    }
-    const ageDays = newest.ms > 0 ? (Date.now() - newest.ms) / (86400 * 1000) : null;
-    if (missing.length > 0) {
-        out.hintJa = `data/ に CSV が ${missing.length} 本足りません。npm run doctor で確認し、npm run setup を試してください。`;
-    } else if (ageDays != null && ageDays > 5) {
-        out.hintJa =
-            'ローカル CSV の更新から 5 日以上経っています。CLI を使う場合は npm run setup の再実行を検討してください。';
-    }
-    return out;
-}
-
-// データ取得
-async function fetchData(ticker, days = 200) {
-    try {
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-        
-        const result = await yahooFinance.chart(ticker, {
-            period1: startDate.toISOString().split('T')[0],
-            period2: endDate.toISOString().split('T')[0],
-            interval: '1d'
-        });
-        
-        return result.quotes
-            .filter(q => q.close !== null && q.close > 0)
-            .map(q => ({
-                date: q.date.toISOString().split('T')[0],
-                open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume
-            }));
-    } catch (e) {
-        console.error(`Error fetching ${ticker}:`, e.message);
-        return [];
-    }
-}
-
-function computeReturns(ohlc, type = 'cc') {
-    if (type === 'cc') {
-        const ret = [];
-        let prev = null;
-        for (const r of ohlc) {
-            if (prev !== null) ret.push((r.close - prev) / prev);
-            prev = r.close;
-        }
-        return ret;
+  // windowLength
+  if (body.windowLength !== undefined) {
+    const val = parseInt(body.windowLength, 10);
+    if (isNaN(val) || val < 10 || val > 500) {
+      errors.push('windowLength must be between 10 and 500');
     } else {
-        return ohlc.filter(r => r.open > 0).map(r => (r.close - r.open) / r.open);
+      params.windowLength = val;
     }
+  }
+
+  // lambdaReg
+  if (body.lambdaReg !== undefined) {
+    const val = parseFloat(body.lambdaReg);
+    if (isNaN(val) || val < 0 || val > 1) {
+      errors.push('lambdaReg must be between 0 and 1');
+    } else {
+      params.lambdaReg = val;
+    }
+  }
+
+  // quantile
+  if (body.quantile !== undefined) {
+    const val = parseFloat(body.quantile);
+    if (isNaN(val) || val <= 0 || val > 0.5) {
+      errors.push('quantile must be between 0 and 0.5');
+    } else {
+      params.quantile = val;
+    }
+  }
+
+  // nFactors
+  if (body.nFactors !== undefined) {
+    const val = parseInt(body.nFactors, 10);
+    if (isNaN(val) || val < 1 || val > 10) {
+      errors.push('nFactors must be between 1 and 10');
+    } else {
+      params.nFactors = val;
+    }
+  }
+
+  return { errors, params };
 }
 
-// バックテスト API - シンプル版
+/**
+ * 数値パラメータを安全に解析（デフォルト値付き）
+ */
+function parseLambdaReg(value, defaultVal) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : defaultVal;
+}
+
+/**
+ * 表示用メトリクスに変換
+ */
+function toDisplayMetrics(raw, dayCount) {
+  return {
+    AR: raw.AR * 100,
+    RISK: raw.RISK * 100,
+    RR: raw.RR,
+    MDD: raw.MDD * 100,
+    Total: (raw.Cumulative - 1) * 100,
+    Days: dayCount
+  };
+}
+
+// ============================================
+// データ取得
+// ============================================
+
+/**
+ * Yahoo Finance からデータを取得（リトライ付き）
+ * @param {string} ticker - ティッカー
+ * @param {number} days - 取得日数
+ * @returns {Promise<{data: Array, error: string|null}>}
+ */
+async function fetchData(ticker, days = 200) {
+  if (config.data.mode === 'csv') {
+    const filePath = path.join(path.resolve(config.data.dataDir), `${ticker}.csv`);
+    if (!fs.existsSync(filePath)) {
+      return { data: [], error: `CSV not found: ${filePath}` };
+    }
+    try {
+      const rows = loadCSV(filePath).map(row => ({
+        date: String(row.Date || row.date || '').split('T')[0],
+        open: Number(row.Open ?? row.open),
+        high: Number(row.High ?? row.high),
+        low: Number(row.Low ?? row.low),
+        close: Number(row.Close ?? row.close),
+        volume: Number(row.Volume ?? row.volume ?? 0)
+      })).filter(r => r.date && Number.isFinite(r.close) && r.close > 0);
+
+      const data = days > 0 && rows.length > days ? rows.slice(-days) : rows;
+      return { data, error: null };
+    } catch (error) {
+      return { data: [], error: error.message };
+    }
+  }
+
+  try {
+    const YahooFinance = require('yahoo-finance2').default;
+    const yahooFinance = new YahooFinance();
+
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const result = await fetchWithRetry(
+      () => yahooFinance.chart(ticker, {
+        period1: startDate.toISOString().split('T')[0],
+        period2: endDate.toISOString().split('T')[0],
+        interval: '1d'
+      }),
+      { maxRetries: 3, baseDelay: 1000 }
+    );
+
+    const data = result.quotes
+      .filter(q => q.close !== null && q.close > 0)
+      .map(q => ({
+        date: q.date.toISOString().split('T')[0],
+        open: q.open,
+        high: q.high,
+        low: q.low,
+        close: q.close,
+        volume: q.volume
+      }));
+
+    return { data, error: null };
+  } catch (error) {
+    logger.warn(`Failed to fetch data for ${ticker}`, { error: error.message });
+    return { data: [], error: error.message };
+  }
+}
+
+/**
+ * リターンを計算
+ */
+function computeReturns(ohlc, type = 'cc') {
+  if (!ohlc || ohlc.length < 2) return [];
+
+  if (type === 'cc') {
+    const returns = [];
+    let prev = null;
+    for (const r of ohlc) {
+      if (prev !== null) {
+        returns.push((r.close - prev) / prev);
+      }
+      prev = r.close;
+    }
+    return returns;
+  } else {
+    return ohlc
+      .filter(r => r.open > 0)
+      .map(r => (r.close - r.open) / r.open);
+  }
+}
+
+/**
+ * リターンマトリックスを構築（日付アライメント改善版）
+ */
+function buildReturnMatrices(usData, jpData) {
+  const usCC = {};
+  const jpCC = {};
+  const jpOC = {};
+
+  for (const t of US_ETF_TICKERS) {
+    usCC[t] = computeReturns(usData[t], 'cc');
+  }
+  for (const t of JP_ETF_TICKERS) {
+    jpCC[t] = computeReturns(jpData[t], 'cc');
+    jpOC[t] = computeReturns(jpData[t], 'oc');
+  }
+
+  // 日付マップ
+  const usMap = new Map();
+  const jpCCMap = new Map();
+  const jpOCMap = new Map();
+
+  for (const t of US_ETF_TICKERS) {
+    const data = usData[t];
+    for (let i = 1; i < data.length; i++) {
+      const ret = (data[i].close - data[i - 1].close) / data[i - 1].close;
+      if (!usMap.has(data[i].date)) usMap.set(data[i].date, {});
+      usMap.get(data[i].date)[t] = ret;
+    }
+  }
+
+  for (const t of JP_ETF_TICKERS) {
+    const data = jpData[t];
+    for (let i = 1; i < data.length; i++) {
+      const ccRet = (data[i].close - data[i - 1].close) / data[i - 1].close;
+      const ocRet = (data[i].close - data[i].open) / data[i].open;
+      if (!jpCCMap.has(data[i].date)) jpCCMap.set(data[i].date, {});
+      jpCCMap.get(data[i].date)[t] = ccRet;
+      if (!jpOCMap.has(data[i].date)) jpOCMap.set(data[i].date, {});
+      jpOCMap.get(data[i].date)[t] = ocRet;
+    }
+  }
+
+  return buildPaperAlignedReturnRows(
+    usMap,
+    jpCCMap,
+    jpOCMap,
+    US_ETF_TICKERS,
+    JP_ETF_TICKERS,
+    config.backtest.jpWindowReturn
+  );
+}
+
+// ============================================
+// API Endpoints
+// ============================================
+
+/**
+ * バックテスト API
+ */
 app.post('/api/backtest', async (req, res) => {
-    try {
-        if (!allowHeavyApi(res)) return;
-        const { windowLength, lambdaReg, quantile } = req.body;
-        const wl = parseIntFinite(windowLength, CONFIG.windowLength);
-        const config = {
-            windowLength: wl,
-            nFactors: CONFIG.nFactors,
-            lambdaReg: parseFloatFinite(lambdaReg, CONFIG.lambdaReg),
-            quantile: parseFloatFinite(quantile, CONFIG.quantile),
-            warmupPeriod: wl,
-        };
-
-        console.log('バックテスト実行中...', config);
-
-        // データ取得
-        const usData = {};
-        const jpData = {};
-
-        for (const ticker of US_ETF_TICKERS) {
-            usData[ticker] = await fetchData(ticker, 500);
-        }
-        for (const ticker of JP_ETF_TICKERS) {
-            jpData[ticker] = await fetchData(ticker, 500);
-        }
-
-        // リターン計算
-        const usCC = {};
-        const jpCC = {};
-        const jpOC = {};
-
-        for (const t of US_ETF_TICKERS) usCC[t] = computeReturns(usData[t], 'cc');
-        for (const t of JP_ETF_TICKERS) {
-            jpCC[t] = computeReturns(jpData[t], 'cc');
-            jpOC[t] = computeReturns(jpData[t], 'oc');
-        }
-
-        // 日付マップ構築
-        const usMap = new Map();
-        const jpCCMap = new Map();
-        const jpOCMap = new Map();
-
-        US_ETF_TICKERS.forEach(t => {
-            usData[t].slice(1).forEach((r, i) => {
-                const ret = (r.close - usData[t][i].close) / usData[t][i].close;
-                if (!usMap.has(r.date)) usMap.set(r.date, {});
-                usMap.get(r.date)[t] = ret;
-            });
-        });
-
-        JP_ETF_TICKERS.forEach(t => {
-            jpData[t].slice(1).forEach((r, i) => {
-                const ccRet = (r.close - jpData[t][i].close) / jpData[t][i].close;
-                const ocRet = (r.close - r.open) / r.open;
-                if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
-                jpCCMap.get(r.date)[t] = ccRet;
-                if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {});
-                jpOCMap.get(r.date)[t] = ocRet;
-            });
-        });
-
-        // 共通日付
-        const commonDates = [...usMap.keys()].filter(d => jpCCMap.has(d)).sort();
-
-        // 行列入れ
-        const retUs = [], retJp = [], retJpOc = [], dates = [];
-        for (let i = 1; i < commonDates.length; i++) {
-            const usDate = commonDates[i - 1];
-            const jpDate = commonDates[i];
-            const usRow = US_ETF_TICKERS.map(t => usMap.get(usDate)?.[t]);
-            const jpRow = JP_ETF_TICKERS.map(t => jpCCMap.get(jpDate)?.[t]);
-            const jpOcRow = JP_ETF_TICKERS.map(t => jpOCMap.get(jpDate)?.[t]);
-
-            if (usRow.some(v => v === null || v === undefined) || 
-                jpRow.some(v => v === null || v === undefined) || 
-                jpOcRow.some(v => v === null || v === undefined)) continue;
-
-            retUs.push({ date: usDate, values: usRow });
-            retJp.push({ date: jpDate, values: jpRow });
-            retJpOc.push({ date: jpDate, values: jpOcRow });
-            dates.push(jpDate);
-        }
-
-        console.log(`バックテスト期間：${dates.length}日`);
-
-        if (dates.length < config.warmupPeriod + 10) {
-            return res.json({ 
-                error: 'データが不足しています',
-                metrics: { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0, Days: dates.length }
-            });
-        }
-
-        // C_full 計算
-        const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
-            .map((r, i) => [...r.values, ...retJp[i].values]);
-        const CFull = correlationMatrix(combined);
-
-        // シグナル計算
-        const signalGen = new LeadLagSignal(config);
-        const results = [];
-
-        for (let i = config.warmupPeriod; i < retJpOc.length; i++) {
-            const start = i - config.windowLength;
-            const retUsWin = retUs.slice(start, i).map(r => r.values);
-            const retJpWin = retJp.slice(start, i).map(r => r.values);
-            const retUsLatest = retUs[i - 1].values;
-
-            const signal = signalGen.compute(retUsWin, retJpWin, retUsLatest, SECTOR_LABELS, CFull);
-
-            // ポートフォリオ構築
-            const n = signal.length;
-            const q = Math.max(1, Math.floor(n * config.quantile));
-            const indexed = signal.map((v, idx) => ({ val: v, idx }))
-                .sort((a, b) => a.val - b.val);
-
-            const longIdx = indexed.slice(-q).map(x => x.idx);
-            const shortIdx = indexed.slice(0, q).map(x => x.idx);
-
-            const retNext = retJpOc[i].values;
-            let stratRet = 0;
-
-            for (const idx of longIdx) stratRet += retNext[idx] / q;
-            for (const idx of shortIdx) stratRet -= retNext[idx] / q;
-
-            results.push({
-                date: retJpOc[i].date,
-                return: stratRet
-            });
-        }
-
-        // パフォーマンス指標
-        const returns = results.map(r => r.return);
-        const ar = returns.reduce((a, b) => a + b, 0) / returns.length * 252;
-        const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-        const variance = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1);
-        const risk = Math.sqrt(variance) * Math.sqrt(252);
-        const rr = risk > 0 ? ar / risk : 0;
-
-        let cum = 1, rMax = 1, mdd = 0;
-        for (const r of returns) {
-            cum *= (1 + r);
-            if (cum > rMax) rMax = cum;
-            const dd = (cum - rMax) / rMax;
-            if (dd < mdd) mdd = dd;
-        }
-
-        res.json({
-            config,
-            results: results.slice(-200), // 最新 200 日のみ
-            metrics: {
-                AR: ar * 100,
-                RISK: risk * 100,
-                RR: rr,
-                MDD: mdd * 100,
-                Total: (cum - 1) * 100,
-                Days: returns.length
-            }
-        });
-
-    } catch (e) {
-        console.error('バックテストエラー:', e);
-        res.status(500).json({ error: e.message, metrics: null });
+  try {
+    // 入力検証
+    const validation = validateBacktestParams(req.body);
+    if (validation.errors.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid parameters',
+        details: validation.errors
+      });
     }
+
+    const backtestConfig = {
+      windowLength: validation.params.windowLength || config.backtest.windowLength,
+      nFactors: validation.params.nFactors || config.backtest.nFactors,
+      lambdaReg: validation.params.lambdaReg !== undefined
+        ? validation.params.lambdaReg
+        : config.backtest.lambdaReg,
+      quantile: validation.params.quantile || config.backtest.quantile,
+      warmupPeriod: validation.params.windowLength || config.backtest.warmupPeriod,
+      orderedSectorKeys: config.pca.orderedSectorKeys
+    };
+
+    const costs = config.backtest.transactionCosts;
+    const chartDays = config.backtest.chartCalendarDays;
+
+    logger.info('Running backtest', {
+      ...backtestConfig,
+      chartCalendarDays: chartDays,
+      costs
+    });
+
+    // データ取得
+    logger.info('Fetching US ETF data');
+    const usData = {};
+    for (const ticker of US_ETF_TICKERS) {
+      const usResult = await fetchData(ticker, chartDays);
+      if (usResult.error) {
+        logger.warn(`Failed to fetch US data for ${ticker}: ${usResult.error}`);
+      }
+      usData[ticker] = usResult.data;
+    }
+
+    logger.info('Fetching JP ETF data');
+    const jpData = {};
+    for (const ticker of JP_ETF_TICKERS) {
+      const jpResult = await fetchData(ticker, chartDays);
+      if (jpResult.error) {
+        logger.warn(`Failed to fetch JP data for ${ticker}: ${jpResult.error}`);
+      }
+      jpData[ticker] = jpResult.data;
+    }
+
+    const { retUs, retJp, retJpOc, dates } = buildReturnMatrices(usData, jpData);
+
+    logger.info(`Data loaded: ${dates.length} trading days`);
+
+    // データ量チェック
+    if (dates.length < backtestConfig.warmupPeriod + 10) {
+      return res.json({
+        error: 'データが不足しています',
+        metrics: { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0, Days: dates.length }
+      });
+    }
+
+    // C_full 計算（パフォーマンス最適化：対称性を利用）
+    const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
+      .map((r, i) => [...r.values, ...retJp[i].values]);
+    const CFull = correlationMatrixSample(combined);
+
+    // シグナル生成
+    const signalGen = new LeadLagSignal(backtestConfig);
+    const results = [];
+    const equalWeightSeries = [];
+    const momentumSeries = [];
+
+    // バックテストループ（参照のみ使用：不要なコピーを削除）
+    for (let i = backtestConfig.warmupPeriod; i < retJpOc.length; i++) {
+      const start = i - backtestConfig.windowLength;
+      const retUsWin = retUs.slice(start, i).map(r => r.values);
+      const retJpWin = retJp.slice(start, i).map(r => r.values);
+      const retUsLatest = retUs[i - 1].values;
+
+      const signal = signalGen.computeSignal(
+        retUsWin,
+        retJpWin,
+        retUsLatest,
+        config.sectorLabels,
+        CFull
+      );
+
+      const weights = buildPortfolio(signal, backtestConfig.quantile);
+      const retNext = retJpOc[i].values;
+      const nJp = retNext.length;
+
+      // ポートフォオリターン計算
+      let stratRet = 0;
+      for (let j = 0; j < weights.length; j++) {
+        stratRet += weights[j] * retNext[j];
+      }
+      stratRet = applyTransactionCosts(stratRet, costs);
+
+      results.push({
+        date: retJpOc[i].date,
+        return: stratRet
+      });
+
+      // 均等ウェイト（ベンチマーク）
+      const eqRaw = retNext.reduce((s, x) => s + x, 0) / nJp;
+      equalWeightSeries.push({ date: retJpOc[i].date, return: eqRaw });
+
+      // モメンタム戦略
+      const mom = new Array(nJp).fill(0);
+      for (let j = i - backtestConfig.windowLength; j < i; j++) {
+        for (let k = 0; k < nJp; k++) {
+          mom[k] += retJp[j].values[k];
+        }
+      }
+      for (let k = 0; k < nJp; k++) {
+        mom[k] /= backtestConfig.windowLength;
+      }
+      const wMom = buildPortfolio(mom, backtestConfig.quantile);
+      let momRet = 0;
+      for (let j = 0; j < nJp; j++) {
+        momRet += wMom[j] * retNext[j];
+      }
+      momRet = applyTransactionCosts(momRet, costs);
+      momentumSeries.push({ date: retJpOc[i].date, return: momRet });
+    }
+
+    // パフォーマンス指標計算
+    const returns = results.map(r => r.return);
+    const mStrat = computePerformanceMetrics(returns);
+    const mEq = computePerformanceMetrics(equalWeightSeries.map(r => r.return));
+    const mMom = computePerformanceMetrics(momentumSeries.map(r => r.return));
+
+    // ローリング分析
+    const rollingWindow = config.backtest.rollingReportWindow;
+    const rolling = computeRollingMetrics(results, rollingWindow);
+    const rollingRR = rolling.map(x => x.RR);
+    const rollingSummary = {
+      window: rollingWindow,
+      count: rolling.length,
+      lastDate: rolling.length ? rolling[rolling.length - 1].date : null,
+      lastRR: rolling.length ? rolling[rolling.length - 1].RR : null,
+      minRR: rollingRR.length ? Math.min(...rollingRR) : null,
+      maxRR: rollingRR.length ? Math.max(...rollingRR) : null,
+      tail: rolling.slice(-5)
+    };
+
+    // 年別パフォーマンス
+    const yearlyRaw = computeYearlyPerformance(results);
+    const yearlyStrategy = {};
+    for (const [y, m] of Object.entries(yearlyRaw)) {
+      const dayCount = results.filter(r => r.date.startsWith(y)).length;
+      yearlyStrategy[y] = toDisplayMetrics(m, dayCount);
+    }
+
+    const stratDays = returns.length;
+
+    res.json({
+      config: {
+        ...backtestConfig,
+        transactionCosts: costs,
+        chartCalendarDays: chartDays,
+        rollingReportWindow: rollingWindow
+      },
+      costsNote:
+        'PCA 戦略・モメンタム LS は backtest_real と同様の applyTransactionCosts（往復相当でコスト×2）。' +
+        'JP 業種均等ロングはコストなしの単純平均 OC リターン（比較用ベンチマーク）。',
+      results: results.slice(-200),
+      metrics: {
+        ...toDisplayMetrics(mStrat, stratDays),
+        costsApplied: true,
+        equalWeightJP: toDisplayMetrics(mEq, equalWeightSeries.length),
+        momentum: toDisplayMetrics(mMom, momentumSeries.length)
+      },
+      yearlyStrategy,
+      rollingSummary
+    });
+
+  } catch (error) {
+    logger.error('Backtest failed', {
+      error: error.message,
+      path: '/api/backtest'
+    });
+    res.status(500).json({
+      error: config.server.isDevelopment ? error.message : 'Backtest failed'
+    });
+  }
 });
 
-// シグナル生成 API
+/**
+ * シグナル生成 API
+ */
 app.post('/api/signal', async (req, res) => {
-    try {
-        if (!allowHeavyApi(res)) return;
-        const { windowLength, lambdaReg, quantile } = req.body;
-        const config = {
-            windowLength: parseIntFinite(windowLength, CONFIG.windowLength),
-            nFactors: CONFIG.nFactors,
-            lambdaReg: parseFloatFinite(lambdaReg, CONFIG.lambdaReg),
-            quantile: parseFloatFinite(quantile, CONFIG.quantile),
-        };
-        
-        console.log('シグナル生成中...', config);
-        
-        // データ取得
-        const usData = {};
-        const jpData = {};
-        
-        for (const ticker of US_ETF_TICKERS) {
-            usData[ticker] = await fetchData(ticker, config.windowLength + 50);
-        }
-        for (const ticker of JP_ETF_TICKERS) {
-            jpData[ticker] = await fetchData(ticker, config.windowLength + 50);
-        }
-        
-        // リターン計算
-        const usCC = {};
-        const jpCC = {};
-        
-        for (const t of US_ETF_TICKERS) usCC[t] = computeReturns(usData[t], 'cc');
-        for (const t of JP_ETF_TICKERS) jpCC[t] = computeReturns(jpData[t], 'cc');
-        
-        // 行列構築
-        const retUs = [], retJp = [];
-        const dates = [];
-        
-        const minLen = Math.min(...Object.values(usCC).map(a => a.length));
-        for (let i = 0; i < minLen; i++) {
-            const usRow = US_ETF_TICKERS.map(t => usCC[t][i]);
-            const jpRow = JP_ETF_TICKERS.map(t => jpCC[t][i]);
-            
-            if (usRow.some(v => v === null || isNaN(v)) || jpRow.some(v => v === null || isNaN(v))) continue;
-            
-            retUs.push(usRow);
-            retJp.push(jpRow);
-            
-            const date = usData[US_ETF_TICKERS[0]][i + 1]?.date;
-            if (date) dates.push(date);
-        }
-        
-        if (retUs.length < config.windowLength) {
-            return res.json({ error: 'データが不足しています', signals: [] });
-        }
-        
-        // C_full 計算
-        const combined = retUs.map((r, i) => [...r, ...retJp[i]]);
-        const CFull = correlationMatrix(combined);
-        
-        // 最新シグナル計算
-        const signalGen = new LeadLagSignal(config);
-        const retUsWin = retUs.slice(-config.windowLength);
-        const retJpWin = retJp.slice(-config.windowLength);
-        const retUsLatest = retUs[retUs.length - 1];
-        
-        const signal = signalGen.compute(retUsWin, retJpWin, retUsLatest, SECTOR_LABELS, CFull);
-        
-        // ランキング作成
-        const signals = JP_ETF_TICKERS.map((ticker, i) => ({
-            ticker,
-            name: JP_ETF_NAMES[ticker] || ticker,
-            signal: signal[i],
-            rank: 0
-        })).sort((a, b) => b.signal - a.signal);
-        
-        signals.forEach((s, i) => s.rank = i + 1);
-
-        // 価格データを追加取得（楽天証券・1 口から購入可能のため）
-        const prices = {};
-        for (const ticker of JP_ETF_TICKERS) {
-            try {
-                const quote = await yahooFinance.quote(ticker);
-                prices[ticker] = quote.regularMarketPrice || 0;
-            } catch (e) {
-                prices[ticker] = 0;
-            }
-        }
-
-        // 価格情報を追加
-        signals.forEach(s => {
-            s.price = prices[s.ticker] || 0;
-            s.priceFormatted = s.price > 0 ? `${s.price.toLocaleString()}円/口` : 'N/A';
-        });
-
-        // 買い候補（上位 30%）
-        const buyCount = Math.max(1, Math.floor(JP_ETF_TICKERS.length * config.quantile));
-        const buyCandidates = signals.slice(0, buyCount);
-        
-        // 買い候補の価格も追加
-        buyCandidates.forEach(s => {
-            s.price = prices[s.ticker] || 0;
-            s.priceFormatted = s.price > 0 ? `${s.price.toLocaleString()}円/口` : 'N/A';
-        });
-        
-        // 売り候補（下位 30%）
-        const sellCandidates = signals.slice(-buyCount);
-        
-        res.json({
-            config,
-            signals,
-            buyCandidates,
-            sellCandidates,
-            latestDate: dates[dates.length - 1],
-            metrics: {
-                meanSignal: signal.reduce((a, b) => a + b, 0) / signal.length,
-                stdSignal: Math.sqrt(signal.reduce((a, b) => a + (b - signal.reduce((s, v) => s + v, 0) / signal.length) ** 2, 0) / signal.length)
-            }
-        });
-        
-    } catch (e) {
-        console.error('シグナルエラー:', e);
-        res.status(500).json({ error: e.message });
+  try {
+    // 入力検証
+    const validation = validateBacktestParams(req.body);
+    if (validation.errors.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid parameters',
+        details: validation.errors
+      });
     }
+
+    const signalConfig = {
+      windowLength: validation.params.windowLength || config.backtest.windowLength,
+      nFactors: validation.params.nFactors || config.backtest.nFactors,
+      lambdaReg: validation.params.lambdaReg !== undefined
+        ? validation.params.lambdaReg
+        : config.backtest.lambdaReg,
+      quantile: validation.params.quantile || config.backtest.quantile,
+      orderedSectorKeys: config.pca.orderedSectorKeys
+    };
+
+    logger.info('Generating signal', signalConfig);
+
+    // データ取得
+    const usData = {};
+    const jpData = {};
+
+    for (const ticker of US_ETF_TICKERS) {
+      const usResult = await fetchData(ticker, signalConfig.windowLength + 50);
+      if (usResult.error) {
+        logger.warn(`Failed to fetch US data for ${ticker}: ${usResult.error}`);
+      }
+      usData[ticker] = usResult.data;
+    }
+    for (const ticker of JP_ETF_TICKERS) {
+      const jpResult = await fetchData(ticker, signalConfig.windowLength + 50);
+      if (jpResult.error) {
+        logger.warn(`Failed to fetch JP data for ${ticker}: ${jpResult.error}`);
+      }
+      jpData[ticker] = jpResult.data;
+    }
+
+    const { retUs, retJp, dates } = buildReturnMatrices(usData, jpData);
+
+    if (retUs.length < signalConfig.windowLength) {
+      return res.json({ error: 'データが不足しています', signals: [] });
+    }
+
+    // C_full 計算
+    const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
+    const CFull = correlationMatrixSample(combined);
+
+    // シグナル計算
+    const signalGen = new LeadLagSignal(signalConfig);
+    const retUsWin = retUs.slice(-signalConfig.windowLength).map(r => r.values);
+    const retJpWin = retJp.slice(-signalConfig.windowLength).map(r => r.values);
+    const retUsLatest = retUs[retUs.length - 1].values;
+
+    const signal = signalGen.computeSignal(
+      retUsWin,
+      retJpWin,
+      retUsLatest,
+      config.sectorLabels,
+      CFull
+    );
+
+    // ランキング作成
+    const signals = JP_ETF_TICKERS.map((ticker, i) => ({
+      ticker,
+      name: JP_ETF_NAMES[ticker] || ticker,
+      signal: signal[i],
+      rank: 0
+    })).sort((a, b) => b.signal - a.signal);
+
+    signals.forEach((s, i) => s.rank = i + 1);
+
+    // 価格取得
+    const YahooFinance = require('yahoo-finance2').default;
+    const yahooFinance = new YahooFinance();
+    const prices = {};
+
+    for (const ticker of JP_ETF_TICKERS) {
+      try {
+        const quote = await fetchWithRetry(
+          () => yahooFinance.quote(ticker),
+          { maxRetries: 2, baseDelay: 500 }
+        );
+        prices[ticker] = quote.regularMarketPrice || 0;
+      } catch (e) {
+        prices[ticker] = 0;
+      }
+    }
+
+    signals.forEach(s => {
+      s.price = prices[s.ticker] || 0;
+      s.priceFormatted = s.price > 0 ? `${s.price.toLocaleString()}円/口` : 'N/A';
+    });
+
+    // 買い/売り候補
+    const buyCount = Math.max(1, Math.floor(JP_ETF_TICKERS.length * signalConfig.quantile));
+    const buyCandidates = signals.slice(0, buyCount);
+    const sellCandidates = signals.slice(-buyCount);
+
+    const meanSig = signal.reduce((a, b) => a + b, 0) / signal.length;
+    const stdSig = Math.sqrt(
+      signal.reduce((sq, x) => sq + Math.pow(x - meanSig, 2), 0) / signal.length
+    );
+
+    res.json({
+      config: signalConfig,
+      signals,
+      buyCandidates,
+      sellCandidates,
+      latestDate: dates[dates.length - 1],
+      metrics: {
+        meanSignal: meanSig,
+        stdSignal: stdSig
+      }
+    });
+
+  } catch (error) {
+    logger.error('Signal generation failed', {
+      error: error.message,
+      path: '/api/signal'
+    });
+    res.status(500).json({
+      error: config.server.isDevelopment ? error.message : 'Signal generation failed'
+    });
+  }
 });
 
-// ローカル data/ の状態（CLI 用）。Web シグナル自体は Yahoo ライブ取得。
-app.get('/api/data-status', (req, res) => {
-    try {
-        res.json(getLocalDataStatus());
-    } catch (e) {
-        console.error('data-status:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// 設定取得 API
+/**
+ * 設定取得 API
+ */
 app.get('/api/config', (req, res) => {
-    res.json(CONFIG);
+  res.json({
+    windowLength: config.backtest.windowLength,
+    nFactors: config.backtest.nFactors,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile
+  });
 });
 
-// 設定更新 API
+/**
+ * 設定更新 API
+ */
 app.post('/api/config', (req, res) => {
-    if (process.env.ALLOW_CONFIG_MUTATION !== '1') {
-        return res.status(403).json({
-            error: '設定の書き換えは無効です。ローカルで有効にする場合は環境変数 ALLOW_CONFIG_MUTATION=1 を設定してください。',
-        });
-    }
-    const allowed = ['windowLength', 'nFactors', 'lambdaReg', 'quantile', 'warmupPeriod'];
-    for (const k of allowed) {
-        if (req.body[k] === undefined) continue;
-        if (k === 'nFactors' || k === 'windowLength' || k === 'warmupPeriod') {
-            const x = parseInt(req.body[k], 10);
-            if (Number.isFinite(x)) CONFIG[k] = x;
-        } else {
-            const x = parseFloat(req.body[k]);
-            if (Number.isFinite(x)) CONFIG[k] = x;
-        }
-    }
-    res.json(CONFIG);
+  const { windowLength, lambdaReg, quantile } = req.body;
+
+  if (windowLength !== undefined) config.backtest.windowLength = windowLength;
+  if (lambdaReg !== undefined) config.backtest.lambdaReg = lambdaReg;
+  if (quantile !== undefined) config.backtest.quantile = quantile;
+
+  res.json({
+    windowLength: config.backtest.windowLength,
+    nFactors: config.backtest.nFactors,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile
+  });
 });
+
+/**
+ * ヘルスチェック
+ */
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ============================================
+// サーバー起動
+// ============================================
+
+const PORT = config.server.port;
 
 app.listen(PORT, () => {
-    console.log(`サーバー起動中: http://localhost:${PORT}`);
-    console.log(`API エンドポイント:`);
-    console.log(`  POST /api/backtest - バックテスト実行`);
-    console.log(`  POST /api/signal - シグナル生成`);
-    console.log(`  GET  /api/data-status - ローカル data/ の状態（CLI 用）`);
-    console.log(`  GET  /api/config - 設定取得`);
-    if (process.env.ALLOW_CONFIG_MUTATION === '1') {
-        console.log(`  POST /api/config - 設定更新（ALLOW_CONFIG_MUTATION=1）`);
-    } else {
-        console.log(`  POST /api/config - 無効（書き換えには ALLOW_CONFIG_MUTATION=1 が必要）`);
-    }
+  logger.info(`Server started`, { port: PORT, env: config.server.env });
+  logger.info('API endpoints:', {
+    'POST /api/backtest': 'Run backtest',
+    'POST /api/signal': 'Generate signal',
+    'GET /api/config': 'Get configuration',
+    'POST /api/config': 'Update configuration',
+    'GET /api/health': 'Health check'
+  });
 });

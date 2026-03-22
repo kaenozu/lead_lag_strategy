@@ -18,6 +18,10 @@ class SubspacePCAConfig:
     n_factors: int = 3  # 因子数 K
     lambda_reg: float = 0.9  # 正則化パラメータ λ
     quantile: float = 0.3  # 分位点 q
+    # 結合リターン行列の列順と一致させるキー（None のときは dict の挿入順・非推奨）
+    ordered_sector_keys: Optional[List[str]] = None
+    # 推定窓内の日本側リターン: "cc" または "oc"（P&L は従来どおり OC）
+    jp_window_return: str = "cc"
 
 
 class SubspaceRegularizedPCA:
@@ -51,8 +55,15 @@ class SubspaceRegularizedPCA:
             長期相関行列
         """
         N = n_us + n_jp
-        K0 = 3
-        
+
+        keys = self.config.ordered_sector_keys
+        if keys is None:
+            keys = list(sector_labels.keys())
+        if len(keys) != N:
+            raise ValueError(
+                f"ordered_sector_keys length {len(keys)} != n_us+n_jp={N}"
+            )
+
         # 1. グローバルファクター：全銘柄に等しい重み
         v1 = np.ones(N)
         v1 = v1 / np.linalg.norm(v1)
@@ -65,14 +76,14 @@ class SubspaceRegularizedPCA:
         v2 = v2 - np.dot(v2, v1) * v1
         v2 = v2 / np.linalg.norm(v2)
         
-        # 3. シクリカル・ディフェンシブファクター
+        # 3. シクリカル・ディフェンシブファクター（列順 = keys）
         v3 = np.zeros(N)
-        for i, label in sector_labels.items():
-            idx = list(sector_labels.keys()).index(i)
+        for i, key in enumerate(keys):
+            label = sector_labels.get(key)
             if label == 'cyclical':
-                v3[idx] = 1.0
+                v3[i] = 1.0
             elif label == 'defensive':
-                v3[idx] = -1.0
+                v3[i] = -1.0
         # v1, v2 に直交化
         v3 = v3 - np.dot(v3, v1) * v1
         v3 = v3 - np.dot(v3, v2) * v2
@@ -337,13 +348,17 @@ def backtest(
     
     strategy_returns = []
     
+    ret_jp_for_window = (
+        returns_jp_oc if getattr(config, "jp_window_return", "cc") == "oc" else returns_jp
+    )
+
     for i, date in enumerate(dates):
         # ウィンドウの取得
         window_end = returns_jp.index.get_loc(date)
         window_start = window_end - config.window_length
         
         ret_us_window = returns_us.iloc[window_start:window_end].values
-        ret_jp_window = returns_jp.iloc[window_start:window_end].values
+        ret_jp_window = ret_jp_for_window.iloc[window_start:window_end].values
         ret_us_latest = returns_us.iloc[window_end - 1].values
         
         # シグナルの計算

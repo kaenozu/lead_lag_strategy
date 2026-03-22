@@ -9,6 +9,11 @@ const path = require('path');
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
 
+const { LeadLagSignal } = require('./lib/pca');
+const { correlationMatrixSample } = require('./lib/math');
+const { buildPaperAlignedReturnRows } = require('./lib/data');
+const { config: appConfig } = require('./lib/config');
+
 // ============================================================================
 // 設定（リスク管理強化）
 // ============================================================================
@@ -54,113 +59,6 @@ const SECTOR_LABELS = {
     'JP_1619.T': 'neutral', 'JP_1620.T': 'neutral', 'JP_1622.T': 'neutral', 'JP_1623.T': 'neutral',
     'JP_1624.T': 'neutral', 'JP_1626.T': 'neutral', 'JP_1628.T': 'neutral', 'JP_1632.T': 'neutral', 'JP_1633.T': 'neutral',
 };
-
-// ============================================================================
-// 線形代数
-// ============================================================================
-
-function transpose(m) { return m[0].map((_, i) => m.map(r => r[i])); }
-function dotProduct(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
-function norm(v) { return Math.sqrt(v.reduce((s, x) => s + x * x, 0)); }
-function normalize(v) { const n = norm(v); return n > 1e-10 ? v.map(x => x / n) : v; }
-function diag(m) { return m.map((r, i) => r[i]); }
-function makeDiag(v) { const n = v.length; const r = new Array(n).fill(0).map(() => new Array(n).fill(0)); for (let i = 0; i < n; i++) r[i][i] = v[i]; return r; }
-function matmul(A, B) { const rowsA = A.length, colsA = A[0].length, colsB = B[0].length; const result = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0)); for (let i = 0; i < rowsA; i++) for (let j = 0; j < colsB; j++) for (let k = 0; k < colsA; k++) result[i][j] += A[i][k] * B[k][j]; return result; }
-
-function eigenDecposition(matrix, k = 3) {
-    const n = matrix.length, eigenvalues = [], eigenvectors = [];
-    let A = matrix.map(row => [...row]);
-    for (let e = 0; e < k; e++) {
-        let v = normalize(new Array(n).fill(0).map((_, i) => Math.random()));
-        for (let iter = 0; iter < 1000; iter++) {
-            let vNew = new Array(n).fill(0);
-            for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) vNew[i] += A[i][j] * v[j];
-            const newNorm = norm(vNew);
-            if (newNorm < 1e-10) break;
-            v = vNew.map(x => x / newNorm);
-        }
-        const Av = new Array(n).fill(0);
-        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) Av[i] += A[i][j] * v[j];
-        eigenvalues.push(dotProduct(v, Av));
-        eigenvectors.push(v);
-        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) A[i][j] -= eigenvalues[e] * v[i] * v[j];
-    }
-    return { eigenvalues, eigenvectors };
-}
-
-function correlationMatrix(data) {
-    const n = data.length, m = data[0].length;
-    const means = new Array(m).fill(0), stds = new Array(m).fill(0);
-    for (let j = 0; j < m; j++) { for (let i = 0; i < n; i++) means[j] += data[i][j]; means[j] /= n; }
-    for (let j = 0; j < m; j++) { let s = 0; for (let i = 0; i < n; i++) { const d = data[i][j] - means[j]; s += d * d; } stds[j] = Math.sqrt(s / n) + 1e-10; }
-    const std = new Array(n).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) std[i][j] = (data[i][j] - means[j]) / stds[j];
-    const corr = new Array(m).fill(0).map(() => new Array(m).fill(0));
-    for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) { let s = 0; for (let k = 0; k < n; k++) s += std[k][i] * std[k][j]; corr[i][j] = s / n; }
-    return corr;
-}
-
-// ============================================================================
-// 部分空間正則化 PCA
-// ============================================================================
-
-class SubspaceRegularizedPCA {
-    constructor(config) { this.config = config; this.C0 = null; }
-
-    buildPriorSpace(nUs, nJp, sectorLabels, CFull) {
-        const N = nUs + nJp, keys = Object.keys(sectorLabels);
-        let v1 = normalize(new Array(N).fill(1));
-        let v2 = new Array(N).fill(0);
-        for (let i = 0; i < nUs; i++) v2[i] = 1; for (let i = nUs; i < N; i++) v2[i] = -1;
-        v2 = normalize(v2.map((x, i) => x - dotProduct(v2, v1) * v1[i]));
-        let v3 = new Array(N).fill(0);
-        for (let i = 0; i < N; i++) {
-            const k = keys[i];
-            if (sectorLabels[k] === 'cyclical') v3[i] = 1;
-            else if (sectorLabels[k] === 'defensive') v3[i] = -1;
-        }
-        v3 = normalize(v3.map((x, i) => x - dotProduct(v3, v1) * v1[i] - dotProduct(v3, v2) * v2[i]));
-        const V0 = new Array(N).fill(0).map((_, i) => [v1[i], v2[i], v3[i]]);
-        const D0 = diag(matmul(transpose(V0), matmul(CFull, V0)));
-        const C0Raw = matmul(matmul(V0, makeDiag(D0)), transpose(V0));
-        const delta = diag(C0Raw);
-        const inv = delta.map(x => 1 / Math.sqrt(Math.abs(x) + 1e-10));
-        let C0 = matmul(matmul(makeDiag(inv), C0Raw), makeDiag(inv));
-        for (let i = 0; i < N; i++) C0[i][i] = 1;
-        this.C0 = C0;
-    }
-
-    computeRegularizedPCA(returns, sectorLabels, CFull) {
-        const nUs = Object.keys(sectorLabels).filter(k => k.startsWith('US_')).length;
-        const nJp = Object.keys(sectorLabels).filter(k => k.startsWith('JP_')).length;
-        if (!this.C0) this.buildPriorSpace(nUs, nJp, sectorLabels, CFull);
-        const CT = correlationMatrix(returns), N = CT.length, λ = this.config.lambdaReg;
-        const CReg = new Array(N).fill(0).map((_, i) => new Array(N).fill(0).map((_, j) => (1 - λ) * CT[i][j] + λ * this.C0[i][j]));
-        return { VK: transpose(eigenDecposition(CReg, this.config.nFactors).eigenvectors) };
-    }
-}
-
-// ============================================================================
-// リードラグシグナル
-// ============================================================================
-
-class LeadLagSignal {
-    constructor(config) { this.config = config; this.pca = new SubspaceRegularizedPCA(config); }
-
-    compute(returnsUs, returnsJp, returnsUsLatest, sectorLabels, CFull) {
-        const nSamples = returnsUs.length, nUs = returnsUs[0].length, nJp = returnsJp[0].length;
-        const combined = returnsUs.map((r, i) => [...r, ...returnsJp[i]]);
-        const N = nUs + nJp;
-        const mu = combined[0].map((_, j) => combined.reduce((s, r) => s + r[j], 0) / nSamples);
-        const sigma = combined[0].map((_, j) => Math.sqrt(combined.reduce((s, r) => s + (r[j] - mu[j]) ** 2, 0) / nSamples) + 1e-10);
-        const std = combined.map(r => r.map((x, j) => (x - mu[j]) / sigma[j]));
-        const { VK } = this.pca.computeRegularizedPCA(std, sectorLabels, CFull);
-        const VUs = VK.slice(0, nUs), VJp = VK.slice(nUs);
-        const zLatest = returnsUsLatest.map((x, j) => (x - mu[j]) / sigma[j]);
-        const fT = VUs.map(v => dotProduct(v, zLatest));
-        return VJp.map(v => dotProduct(v, fT));
-    }
-}
 
 // ============================================================================
 // ポートフォリオ構築（リスク管理付き）
@@ -247,20 +145,26 @@ function computeReturns(ohlc, type = 'cc') {
 }
 
 function buildMatrices(usData, jpData) {
-    const usTickers = Object.keys(usData), jpTickers = Object.keys(jpData);
-    const usCC = {}, jpCC = {}, jpOC = {};
+    const usTickers = Object.keys(usData);
+    const jpTickers = Object.keys(jpData);
+    const usCC = {};
+    const jpCC = {};
+    const jpOC = {};
     for (const t of usTickers) usCC[t] = computeReturns(usData[t], 'cc');
     for (const t of jpTickers) {
         jpCC[t] = computeReturns(jpData[t], 'cc');
         jpOC[t] = computeReturns(jpData[t], 'oc');
     }
 
-    const usMap = new Map(), jpCCMap = new Map(), jpOCMap = new Map();
-    for (const t in usCC)
+    const usMap = new Map();
+    const jpCCMap = new Map();
+    const jpOCMap = new Map();
+    for (const t in usCC) {
         for (const r of usCC[t]) {
             if (!usMap.has(r.date)) usMap.set(r.date, {});
             usMap.get(r.date)[t] = r.return;
         }
+    }
     for (const t in jpCC) {
         for (const r of jpCC[t]) {
             if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
@@ -272,29 +176,20 @@ function buildMatrices(usData, jpData) {
         }
     }
 
-    const usDates = new Set([...usMap.keys()].sort());
-    const jpDates = new Set([...jpCCMap.keys()].sort());
-    const common = [...usDates].filter(d => jpDates.has(d)).sort();
-
-    const retUs = [], retJp = [], retJpOc = [], dates = [];
-    for (let i = 1; i < common.length; i++) {
-        const usDate = common[i - 1], jpDate = common[i];
-        const usRow = usTickers.map(t => usMap.get(usDate)?.[t] ?? null);
-        const jpRow = jpTickers.map(t => jpCCMap.get(jpDate)?.[t] ?? null);
-        const jpOcRow = jpTickers.map(t => jpOCMap.get(jpDate)?.[t] ?? null);
-        if (usRow.some(v => v === null) || jpRow.some(v => v === null) || jpOcRow.some(v => v === null)) continue;
-        retUs.push({ date: usDate, values: usRow });
-        retJp.push({ date: jpDate, values: jpRow });
-        retJpOc.push({ date: jpDate, values: jpOcRow });
-        dates.push(jpDate);
-    }
-    return { retUs, retJp, retJpOc, dates };
+    return buildPaperAlignedReturnRows(
+        usMap,
+        jpCCMap,
+        jpOCMap,
+        usTickers,
+        jpTickers,
+        appConfig.backtest.jpWindowReturn
+    );
 }
 
 function computeCFull(retUs, retJp) {
     const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
         .map((r, i) => [...r.values, ...retJp[i].values]);
-    return correlationMatrix(combined);
+    return correlationMatrixSample(combined);
 }
 
 // ============================================================================
@@ -304,7 +199,10 @@ function computeCFull(retUs, retJp) {
 function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskConfig) {
     const nJp = retJp[0].values.length;
     const results = [];
-    const signalGen = new LeadLagSignal(config);
+    const signalGen = new LeadLagSignal({
+        ...config,
+        orderedSectorKeys: appConfig.pca.orderedSectorKeys
+    });
     const totalCost = TRANSACTION_COSTS.slippage + TRANSACTION_COSTS.commission;
 
     // リスク管理用変数
@@ -321,7 +219,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
         const retJpWin = retJp.slice(start, i).map(r => r.values);
         const retUsLatest = retUs[i - 1].values;
 
-        const signal = signalGen.compute(retUsWin, retJpWin, retUsLatest, labels, CFull);
+        const signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
 
         // ボラティリティ計算
         if (recentReturns.length >= volWindow) {
