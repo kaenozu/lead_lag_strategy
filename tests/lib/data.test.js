@@ -35,10 +35,14 @@ describe('lib/data computeReturns', () => {
   });
 
   test('oc: 日中リターン', () => {
-    const ohlc = [{ date: '2024-01-02', open: 100, close: 105 }];
+    const ohlc = [
+      { date: '2024-01-01', open: 100, close: 102 },
+      { date: '2024-01-02', open: 102, close: 105 }
+    ];
     const r = computeReturns(ohlc, 'oc');
     expect(r).toHaveLength(1);
-    expect(r[0].return).toBeCloseTo(0.05, 6);
+    expect(r[0].return).toBeCloseTo(0.0294, 3);
+    expect(r[0].date).toBe('2024-01-02');
   });
 });
 
