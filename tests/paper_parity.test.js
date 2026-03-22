@@ -39,7 +39,8 @@ const FIXTURE = {
 
 function pythonGolden() {
   const root = path.join(__dirname, '..');
-  const out = execSync('python scripts/paper_parity_output.py', {
+  const bin = process.platform === 'win32' ? 'python' : 'python3';
+  const out = execSync(`${bin} scripts/paper_parity_output.py`, {
     cwd: root,
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe']
