@@ -15,22 +15,14 @@ const path = require('path');
 // ライブラリ
 const { createLogger } = require('./lib/logger');
 const { config, validate: validateConfig } = require('./lib/config');
-const {
-  SubspaceRegularizedPCA,
-  LeadLagSignal
-} = require('./lib/pca');
+const { LeadLagSignal } = require('./lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
   applyTransactionCosts,
   computeYearlyPerformance
 } = require('./lib/portfolio');
-const {
-  correlationMatrixSample,
-  eigenSymmetricTopK,
-  transpose,
-  dotProduct
-} = require('./lib/math');
+const { correlationMatrixSample } = require('./lib/math');
 const {
   fetchWithRetry,
   loadCSV,
@@ -250,9 +242,8 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
   const strategyReturns = [];
   const dates = [];
 
-  const signalGenerator = strategy === 'PCA_PLAIN'
-    ? new PlainPCASignal(config)
-    : new LeadLagSignal(config);
+  // PCA_PLAIN は plainConfig（lambdaReg: 0）で LeadLagSignal と同等
+  const signalGenerator = new LeadLagSignal(config);
 
   for (let i = config.warmupPeriod; i < returnsJpOc.length; i++) {
     const windowStart = i - config.windowLength;
@@ -350,56 +341,6 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.3
   }
 
   return { returns: strategyReturns, dates };
-}
-
-// ============================================================================
-// PCA PLAIN（正則化なし）
-// ============================================================================
-
-class PlainPCASignal {
-  constructor(config) {
-    this.config = config;
-  }
-
-  computeSignal(returnsUs, returnsJp, returnsUsLatest, sectorLabels, CFull) {
-    const nSamples = returnsUs.length;
-    const nUs = returnsUs[0].length;
-    const nJp = returnsJp[0].length;
-    const returnsCombined = returnsUs.map((row, i) => [...row, ...returnsJp[i]]);
-
-    const N = nUs + nJp;
-    const mu = new Array(N).fill(0);
-    const sigma = new Array(N).fill(0);
-
-    for (let j = 0; j < N; j++) {
-      let sum = 0;
-      for (let i = 0; i < nSamples; i++) {
-        sum += returnsCombined[i][j];
-      }
-      mu[j] = sum / nSamples;
-
-      let sumSq = 0;
-      for (let i = 0; i < nSamples; i++) {
-        const diff = returnsCombined[i][j] - mu[j];
-        sumSq += diff * diff;
-      }
-      sigma[j] = Math.sqrt(sumSq / nSamples) + 1e-10;
-    }
-
-    const returnsStd = returnsCombined.map(row =>
-      row.map((x, j) => (x - mu[j]) / sigma[j])
-    );
-
-    const CT = correlationMatrixSample(returnsStd);
-    const { eigenvectors } = eigenSymmetricTopK(CT, this.config.nFactors);
-    const VK = transpose(eigenvectors);
-
-    const VUs = VK.slice(0, nUs);
-    const VJp = VK.slice(nUs);
-    const zUsLatest = returnsUsLatest.map((x, j) => (x - mu[j]) / sigma[j]);
-    const fT = VUs.map(v => dotProduct(v, zUsLatest));
-    return VJp.map(v => dotProduct(v, fT));
-  }
 }
 
 // ============================================================================
