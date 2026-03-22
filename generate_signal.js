@@ -18,30 +18,9 @@ const {
   fetchOhlcvForTickers,
   buildReturnMatricesFromOhlcv
 } = require('./lib/data');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('./lib/constants');
 
 const logger = createLogger('SignalGenerator');
-
-// 米国セクター ETF
-const US_ETF_TICKERS = [
-  'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP',
-  'XLRE', 'XLU', 'XLV', 'XLY'
-];
-
-// 日本セクター ETF
-const JP_ETF_TICKERS = [
-  '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
-  '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
-  '1631.T', '1632.T', '1633.T'
-];
-
-const JP_ETF_NAMES = {
-  '1617.T': '食品', '1618.T': 'エネルギー資源', '1619.T': '建設・資材',
-  '1620.T': '素材・化学', '1621.T': '医薬品', '1622.T': '自動車・輸送機',
-  '1623.T': '鉄鋼・非鉄', '1624.T': '機械', '1625.T': '電機・精密',
-  '1626.T': '情報通信', '1627.T': '電力・ガス', '1628.T': '運輸・物流',
-  '1629.T': '商社・卸売', '1630.T': '小売', '1631.T': '銀行',
-  '1632.T': '証券・商品', '1633.T': '保険'
-};
 
 /**
  * コマンドライン引数を解析

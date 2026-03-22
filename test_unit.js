@@ -11,7 +11,7 @@ const {
     LeadLagSignal,
 } = require('./lib/lead_lag_core');
 const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('./sector_constants');
+const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('./lib/constants');
 
 setEigenSeed(12345);
 
