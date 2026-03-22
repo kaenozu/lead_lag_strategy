@@ -316,19 +316,23 @@ async function main() {
     ];
     
     for (const { name, m } of summary) {
+        const total = m.Total !== undefined ? m.Total : m.Cumulative !== undefined ? (m.Cumulative - 1) * 100 : 0;
         console.log(
             name.padEnd(15) +
-            m.AR.toFixed(2).padStart(10) +
-            m.RISK.toFixed(2).padStart(10) +
-            m.RR.toFixed(2).padStart(8) +
-            m.MDD.toFixed(2).padStart(10) +
-            m.Total.toFixed(2).padStart(12)
+            (m.AR || 0).toFixed(2).padStart(10) +
+            (m.RISK || 0).toFixed(2).padStart(10) +
+            (m.RR || 0).toFixed(2).padStart(8) +
+            (m.MDD || 0).toFixed(2).padStart(10) +
+            total.toFixed(2).padStart(12)
         );
     }
-    
+
     // 結果保存
     const summaryCSV = 'Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)\n' +
-        summary.map(s => `${s.name},${s.m.AR.toFixed(4)},${s.m.RISK.toFixed(4)},${s.m.RR.toFixed(4)},${s.m.MDD.toFixed(4)},${s.m.Total.toFixed(4)}`).join('\n');
+        summary.map(s => {
+            const total = s.m.Total !== undefined ? s.m.Total : s.m.Cumulative !== undefined ? (s.m.Cumulative - 1) * 100 : 0;
+            return `${s.name},${(s.m.AR || 0).toFixed(4)},${(s.m.RISK || 0).toFixed(4)},${(s.m.RR || 0).toFixed(4)},${(s.m.MDD || 0).toFixed(4)},${total.toFixed(4)}`;
+        }).join('\n');
     fs.writeFileSync(path.join(outputDir, 'backtest_summary_improved.csv'), summaryCSV);
     
     // 累積リターン
