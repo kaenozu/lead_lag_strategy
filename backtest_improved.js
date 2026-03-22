@@ -7,9 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
-const { correlationMatrix, LeadLagSignal } = require('./lib/lead_lag_core');
+const { LeadLagSignal } = require('./lib/pca');
 const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./sector_constants');
+const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
+const { correlationMatrixSample } = require('./lib/math');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./lib/constants');
 
 // ============================================================================
 // 設定
@@ -82,30 +84,10 @@ function loadLocalData(dataDir, tickers) {
 // ポートフォリオ & パフォーマンス
 // ============================================================================
 
-function buildPortfolio(signal, quantile = 0.3) {
-    const n = signal.length, q = Math.max(1, Math.floor(n * quantile));
-    const indexed = signal.map((v, i) => ({ val: v, idx: i })).sort((a, b) => a.val - b.val);
-    const weights = new Array(n).fill(0);
-    indexed.slice(-q).forEach(x => weights[x.idx] = 1 / q);
-    indexed.slice(0, q).forEach(x => weights[x.idx] = -1 / q);
-    return weights;
-}
-
 function computeMetrics(returns, ann = 252) {
-    const ar = returns.reduce((a, b) => a + b, 0) / returns.length * ann;
-    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-    const var_ = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1);
-    const risk = Math.sqrt(var_) * Math.sqrt(ann);
-    const rr = risk > 0 ? ar / risk : 0;
-    
-    let cum = 1, rMax = 1, mdd = 0;
-    for (const r of returns) {
-        cum *= (1 + r);
-        if (cum > rMax) rMax = cum;
-        const dd = (cum - rMax) / rMax;
-        if (dd < mdd) mdd = dd;
-    }
-    return { AR: ar * 100, RISK: risk * 100, RR: rr, MDD: mdd * 100, Total: (cum - 1) * 100 };
+    const m = computePerformanceMetrics(returns);
+    m.AR = m.AR * ann / 252;
+    return m;
 }
 
 // ============================================================================
@@ -115,7 +97,7 @@ function computeMetrics(returns, ann = 252) {
 function computeCFull(retUs, retJp) {
     const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
         .map((r, i) => [...r.values, ...retJp[i].values]);
-    return correlationMatrix(combined);
+    return correlationMatrixSample(combined);
 }
 
 // ============================================================================
@@ -140,7 +122,7 @@ function runStrategy(retUs, retJp, retJpOc, config, labels, CFull, useMomentum =
             const retUsWin = retUs.slice(start, i).map(r => r.values);
             const retJpWin = retJp.slice(start, i).map(r => r.values);
             const retUsLatest = retUs[i - 1].values;
-            signal = signalGen.compute(retUsWin, retJpWin, retUsLatest, labels, CFull);
+            signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         }
         
         const weights = buildPortfolio(signal, config.quantile);
@@ -164,7 +146,7 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         const retJpWin = retJp.slice(start, i).map(r => r.values);
         const retUsLatest = retUs[i - 1].values;
         
-        const signalPca = signalGen.compute(retUsWin, retJpWin, retUsLatest, labels, CFull);
+        const signalPca = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         
         const signalMom = new Array(nJp).fill(0);
         for (let j = start; j < i; j++)
