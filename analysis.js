@@ -85,15 +85,17 @@ function regimePerformance(results) {
     const bullResults = [];
     const bearResults = [];
     let ytdReturn = 0;
+    let currentYear = null;
 
     for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (!r.date) continue;
 
-        const date = r.date;
-        const month = parseInt(date.slice(5, 7), 10);
-
-        if (month === 1) ytdReturn = 0;
+        const year = r.date.slice(0, 4);
+        if (year !== currentYear) {
+            ytdReturn = 0;
+            currentYear = year;
+        }
 
         if (ytdReturn >= 0) bullResults.push(r.return);
         else bearResults.push(r.return);
