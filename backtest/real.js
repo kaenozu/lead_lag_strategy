@@ -19,6 +19,7 @@ const { LeadLagSignal } = require('../lib/pca');
 const { SimpleLeadLagSignal, BetaBasedSignal } = require('../lib/pca/simple_signal');
 const { DirectionalLeadLagSignal, SectorDirectionalSignal } = require('../lib/pca/directional_signal');
 const { CrossCorrelationSignal, EnsembleCorrelationSignal, RiskParitySignal } = require('../lib/pca/correlation_signal');
+const { PairsSignal } = require('../lib/pca/pairs_signal');
 const {
   buildPortfolio,
   buildDoubleSortPortfolio,
@@ -261,6 +262,9 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
   } else if (strategy === 'RISK_PARITY') {
     signalGenerator = new RiskParitySignal(config);
     useDirectSignal = true;
+  } else if (strategy === 'PAIRS') {
+    signalGenerator = new PairsSignal(config);
+    useDirectSignal = true;
   } else {
     signalGenerator = new LeadLagSignal(config);
   }
@@ -376,6 +380,8 @@ function runWeeklyStrategy(returnsUs, returnsJp, config, sectorLabels, CFull, st
     signalGenerator = new DirectionalLeadLagSignal(config);
   } else if (strategy === 'SIMPLE_LL') {
     signalGenerator = new SimpleLeadLagSignal(config);
+  } else if (strategy === 'PAIRS') {
+    signalGenerator = new PairsSignal(config);
   } else {
     signalGenerator = new LeadLagSignal(config);
   }
@@ -595,6 +601,11 @@ async function main() {
   const resultsRiskParity = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'RISK_PARITY');
   const metricsRiskParity = computePerformanceMetrics(resultsRiskParity.returns.map(r => r.return));
 
+  // PAIRS SPREAD STRATEGY (Best performer from optimization)
+  const pairsConfig = { ...backtestConfig, windowLength: 60, quantile: 0.2 };
+  const resultsPairs = runBacktest(returnsUs, returnsJp, returnsJpOc, pairsConfig, SECTOR_LABELS, CFull, 'PAIRS');
+  const metricsPairs = computePerformanceMetrics(resultsPairs.returns.map(r => r.return));
+
   // 週次リバランス戦略（低コストBroker想定）
   const weeklyLowCost = { ...backtestConfig, transactionCosts: { slippage: 0.0001, commission: 0.00005 } };
   
@@ -613,6 +624,11 @@ async function main() {
   const weeklyConfig4 = { ...weeklyLowCost, windowLength: 120, quantile: 0.2 };
   const resultsW4 = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig4, SECTOR_LABELS, CFull, 'CROSS_CORR');
   const metricsW4 = computePerformanceMetrics(resultsW4.returns.map(r => r.return));
+
+  // PAIRS Weekly
+  const weeklyPairsConfig = { ...weeklyLowCost, windowLength: 60, quantile: 0.2 };
+  const resultsWPairs = runWeeklyStrategy(returnsUs, returnsJp, weeklyPairsConfig, SECTOR_LABELS, CFull, 'PAIRS');
+  const metricsWPairs = computePerformanceMetrics(resultsWPairs.returns.map(r => r.return));
 
   // 結果表示
   logger.info('Backtest completed');
@@ -640,10 +656,12 @@ async function main() {
     { name: 'CROSS CORR', m: metricsCrossCorr },
     { name: 'ENSEMBLE', m: metricsEnsemble },
     { name: 'RISK PARITY', m: metricsRiskParity },
+    { name: 'PAIRS(60/0.2)', m: metricsPairs },
     { name: 'W-DIR(60/0.3)', m: metricsW1 },
     { name: 'W-DIR(90/0.25)', m: metricsW2 },
     { name: 'W-CROSS(60/0.3)', m: metricsW3 },
-    { name: 'W-CROSS(120/0.2)', m: metricsW4 }
+    { name: 'W-CROSS(120/0.2)', m: metricsW4 },
+    { name: 'W-PAIRS(60/0.2)', m: metricsWPairs }
   ];
 
   for (const { name, m } of summary) {
@@ -676,10 +694,12 @@ async function main() {
     'CROSS_CORR': resultsCrossCorr,
     'ENSEMBLE': resultsEnsemble,
     'RISK_PARITY': resultsRiskParity,
+    'PAIRS': resultsPairs,
     'W_DIR_60_03': resultsW1,
     'W_DIR_90_025': resultsW2,
     'W_CROSS_60_03': resultsW3,
-    'W_CROSS_120_02': resultsW4
+    'W_CROSS_120_02': resultsW4,
+    'W_PAIRS': resultsWPairs
   };
 
   for (const [key, strat] of Object.entries(resultMap)) {
