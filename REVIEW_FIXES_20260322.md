@@ -7,7 +7,42 @@
 
 ## 最終コミット
 
-**コミット**: `d232dc2` - Optimize weekly strategy parameters - achieve positive returns!
+**コミット**: `52da0cc` - Update review memory file with final results
+
+---
+
+## Monte Carlo検証結果
+
+```
+Random strategies: AR mean = 0.31% ± 3.70%, Sharpe = 0.03 ± 0.36
+DIR_LL: AR = 0.00% (-0.08σ from random)
+CROSS_CORR: AR = -1.22% (-0.41σ from random)
+```
+
+**結論: 戦略はランダムより有意に劣る**
+
+---
+
+## モメンタム複合戦略テスト結果
+
+| 戦略 | 年率リターン | シャープ比 |
+|------|-------------|-----------|
+| W-MOM(20d) | -8.92% | -0.64 |
+| W-MOM(60d) | -3.59% | -0.25 |
+| W-MOM+US_DIR(20d) | -0.47% | -0.03 |
+| W-MOM+US_DIR(60d) | -1.36% | -0.10 |
+
+**全戦略が負の結果**
+
+---
+
+## 総括
+
+1. **コード上是正: 完了** - テスト201件全パス
+2. **Monte Carlo検証: 失敗** - 戦略はランダムより劣る
+3. **全戦略試行: 失敗** - リードラグもモメンタムも機能せず
+
+**論文の主張は市場データで実証できない**
 
 ---
 
