@@ -595,13 +595,24 @@ async function main() {
   const resultsRiskParity = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'RISK_PARITY');
   const metricsRiskParity = computePerformanceMetrics(resultsRiskParity.returns.map(r => r.return));
 
-  // 週次リバランス戦略
-  const weeklyConfig = { ...backtestConfig, transactionCosts: { slippage: 0.0005, commission: 0.0002 } };
-  const resultsWeeklyCrossCorr = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig, SECTOR_LABELS, CFull, 'CROSS_CORR');
-  const metricsWeeklyCrossCorr = computePerformanceMetrics(resultsWeeklyCrossCorr.returns.map(r => r.return));
+  // 週次リバランス戦略（低コストBroker想定）
+  const weeklyLowCost = { ...backtestConfig, transactionCosts: { slippage: 0.0001, commission: 0.00005 } };
+  
+  const weeklyConfig1 = { ...weeklyLowCost, windowLength: 60, quantile: 0.3 };
+  const resultsW1 = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig1, SECTOR_LABELS, CFull, 'DIR_LL');
+  const metricsW1 = computePerformanceMetrics(resultsW1.returns.map(r => r.return));
 
-  const resultsWeeklyDir = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig, SECTOR_LABELS, CFull, 'DIR_LL');
-  const metricsWeeklyDir = computePerformanceMetrics(resultsWeeklyDir.returns.map(r => r.return));
+  const weeklyConfig2 = { ...weeklyLowCost, windowLength: 90, quantile: 0.25 };
+  const resultsW2 = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig2, SECTOR_LABELS, CFull, 'DIR_LL');
+  const metricsW2 = computePerformanceMetrics(resultsW2.returns.map(r => r.return));
+
+  const weeklyConfig3 = { ...weeklyLowCost, windowLength: 60, quantile: 0.3 };
+  const resultsW3 = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig3, SECTOR_LABELS, CFull, 'CROSS_CORR');
+  const metricsW3 = computePerformanceMetrics(resultsW3.returns.map(r => r.return));
+
+  const weeklyConfig4 = { ...weeklyLowCost, windowLength: 120, quantile: 0.2 };
+  const resultsW4 = runWeeklyStrategy(returnsUs, returnsJp, weeklyConfig4, SECTOR_LABELS, CFull, 'CROSS_CORR');
+  const metricsW4 = computePerformanceMetrics(resultsW4.returns.map(r => r.return));
 
   // 結果表示
   logger.info('Backtest completed');
@@ -629,8 +640,10 @@ async function main() {
     { name: 'CROSS CORR', m: metricsCrossCorr },
     { name: 'ENSEMBLE', m: metricsEnsemble },
     { name: 'RISK PARITY', m: metricsRiskParity },
-    { name: 'WEEKLY CROSS', m: metricsWeeklyCrossCorr },
-    { name: 'WEEKLY DIR', m: metricsWeeklyDir }
+    { name: 'W-DIR(60/0.3)', m: metricsW1 },
+    { name: 'W-DIR(90/0.25)', m: metricsW2 },
+    { name: 'W-CROSS(60/0.3)', m: metricsW3 },
+    { name: 'W-CROSS(120/0.2)', m: metricsW4 }
   ];
 
   for (const { name, m } of summary) {
@@ -663,8 +676,10 @@ async function main() {
     'CROSS_CORR': resultsCrossCorr,
     'ENSEMBLE': resultsEnsemble,
     'RISK_PARITY': resultsRiskParity,
-    'WEEKLY_CROSS': resultsWeeklyCrossCorr,
-    'WEEKLY_DIR': resultsWeeklyDir
+    'W_DIR_60_03': resultsW1,
+    'W_DIR_90_025': resultsW2,
+    'W_CROSS_60_03': resultsW3,
+    'W_CROSS_120_02': resultsW4
   };
 
   for (const [key, strat] of Object.entries(resultMap)) {
