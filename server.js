@@ -5,19 +5,13 @@
 
 'use strict';
 
-const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
-
 // ライブラリ
 const { createLogger } = require('./lib/logger');
 const { config, validate } = require('./lib/config');
-const {
-  SubspaceRegularizedPCA,
-  LeadLagSignal
-} = require('./lib/pca');
+const { LeadLagSignal } = require('./lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
@@ -30,8 +24,8 @@ const {
 } = require('./lib/math');
 const {
   fetchWithRetry,
-  loadCSV,
-  buildPaperAlignedReturnRows
+  fetchOhlcvForTickers,
+  buildReturnMatricesFromOhlcv
 } = require('./lib/data');
 
 const logger = createLogger('Server');
@@ -204,149 +198,6 @@ function toDisplayMetrics(raw, dayCount) {
 }
 
 // ============================================
-// データ取得
-// ============================================
-
-/**
- * Yahoo Finance からデータを取得（リトライ付き）
- * @param {string} ticker - ティッカー
- * @param {number} days - 取得日数
- * @returns {Promise<{data: Array, error: string|null}>}
- */
-async function fetchData(ticker, days = 200) {
-  if (config.data.mode === 'csv') {
-    const filePath = path.join(path.resolve(config.data.dataDir), `${ticker}.csv`);
-    if (!fs.existsSync(filePath)) {
-      return { data: [], error: `CSV not found: ${filePath}` };
-    }
-    try {
-      const rows = loadCSV(filePath).map(row => ({
-        date: String(row.Date || row.date || '').split('T')[0],
-        open: Number(row.Open ?? row.open),
-        high: Number(row.High ?? row.high),
-        low: Number(row.Low ?? row.low),
-        close: Number(row.Close ?? row.close),
-        volume: Number(row.Volume ?? row.volume ?? 0)
-      })).filter(r => r.date && Number.isFinite(r.close) && r.close > 0);
-
-      const data = days > 0 && rows.length > days ? rows.slice(-days) : rows;
-      return { data, error: null };
-    } catch (error) {
-      return { data: [], error: error.message };
-    }
-  }
-
-  try {
-    const YahooFinance = require('yahoo-finance2').default;
-    const yahooFinance = new YahooFinance();
-
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const result = await fetchWithRetry(
-      () => yahooFinance.chart(ticker, {
-        period1: startDate.toISOString().split('T')[0],
-        period2: endDate.toISOString().split('T')[0],
-        interval: '1d'
-      }),
-      { maxRetries: 3, baseDelay: 1000 }
-    );
-
-    const data = result.quotes
-      .filter(q => q.close !== null && q.close > 0)
-      .map(q => ({
-        date: q.date.toISOString().split('T')[0],
-        open: q.open,
-        high: q.high,
-        low: q.low,
-        close: q.close,
-        volume: q.volume
-      }));
-
-    return { data, error: null };
-  } catch (error) {
-    logger.warn(`Failed to fetch data for ${ticker}`, { error: error.message });
-    return { data: [], error: error.message };
-  }
-}
-
-/**
- * リターンを計算
- */
-function computeReturns(ohlc, type = 'cc') {
-  if (!ohlc || ohlc.length < 2) return [];
-
-  if (type === 'cc') {
-    const returns = [];
-    let prev = null;
-    for (const r of ohlc) {
-      if (prev !== null) {
-        returns.push((r.close - prev) / prev);
-      }
-      prev = r.close;
-    }
-    return returns;
-  } else {
-    return ohlc
-      .filter(r => r.open > 0)
-      .map(r => (r.close - r.open) / r.open);
-  }
-}
-
-/**
- * リターンマトリックスを構築（日付アライメント改善版）
- */
-function buildReturnMatrices(usData, jpData) {
-  const usCC = {};
-  const jpCC = {};
-  const jpOC = {};
-
-  for (const t of US_ETF_TICKERS) {
-    usCC[t] = computeReturns(usData[t], 'cc');
-  }
-  for (const t of JP_ETF_TICKERS) {
-    jpCC[t] = computeReturns(jpData[t], 'cc');
-    jpOC[t] = computeReturns(jpData[t], 'oc');
-  }
-
-  // 日付マップ
-  const usMap = new Map();
-  const jpCCMap = new Map();
-  const jpOCMap = new Map();
-
-  for (const t of US_ETF_TICKERS) {
-    const data = usData[t];
-    for (let i = 1; i < data.length; i++) {
-      const ret = (data[i].close - data[i - 1].close) / data[i - 1].close;
-      if (!usMap.has(data[i].date)) usMap.set(data[i].date, {});
-      usMap.get(data[i].date)[t] = ret;
-    }
-  }
-
-  for (const t of JP_ETF_TICKERS) {
-    const data = jpData[t];
-    for (let i = 1; i < data.length; i++) {
-      const ccRet = (data[i].close - data[i - 1].close) / data[i - 1].close;
-      const ocRet = (data[i].close - data[i].open) / data[i].open;
-      if (!jpCCMap.has(data[i].date)) jpCCMap.set(data[i].date, {});
-      jpCCMap.get(data[i].date)[t] = ccRet;
-      if (!jpOCMap.has(data[i].date)) jpOCMap.set(data[i].date, {});
-      jpOCMap.get(data[i].date)[t] = ocRet;
-    }
-  }
-
-  return buildPaperAlignedReturnRows(
-    usMap,
-    jpCCMap,
-    jpOCMap,
-    US_ETF_TICKERS,
-    JP_ETF_TICKERS,
-    config.backtest.jpWindowReturn
-  );
-}
-
-// ============================================
 // API Endpoints
 // ============================================
 
@@ -384,28 +235,27 @@ app.post('/api/backtest', async (req, res) => {
       costs
     });
 
-    // データ取得
-    logger.info('Fetching US ETF data');
-    const usData = {};
-    for (const ticker of US_ETF_TICKERS) {
-      const usResult = await fetchData(ticker, chartDays);
-      if (usResult.error) {
-        logger.warn(`Failed to fetch US data for ${ticker}: ${usResult.error}`);
-      }
-      usData[ticker] = usResult.data;
+    logger.info('Fetching US/JP ETF data (parallel)');
+    const [usRes, jpRes] = await Promise.all([
+      fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, config),
+      fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, config)
+    ]);
+    const usData = usRes.byTicker;
+    const jpData = jpRes.byTicker;
+    for (const [ticker, err] of Object.entries(usRes.errors)) {
+      logger.warn(`US data ${ticker}: ${err}`);
+    }
+    for (const [ticker, err] of Object.entries(jpRes.errors)) {
+      logger.warn(`JP data ${ticker}: ${err}`);
     }
 
-    logger.info('Fetching JP ETF data');
-    const jpData = {};
-    for (const ticker of JP_ETF_TICKERS) {
-      const jpResult = await fetchData(ticker, chartDays);
-      if (jpResult.error) {
-        logger.warn(`Failed to fetch JP data for ${ticker}: ${jpResult.error}`);
-      }
-      jpData[ticker] = jpResult.data;
-    }
-
-    const { retUs, retJp, retJpOc, dates } = buildReturnMatrices(usData, jpData);
+    const { retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
+      usData,
+      jpData,
+      US_ETF_TICKERS,
+      JP_ETF_TICKERS,
+      config.backtest.jpWindowReturn
+    );
 
     logger.info(`Data loaded: ${dates.length} trading days`);
 
@@ -570,26 +420,24 @@ app.post('/api/signal', async (req, res) => {
 
     logger.info('Generating signal', signalConfig);
 
-    // データ取得
-    const usData = {};
-    const jpData = {};
-
-    for (const ticker of US_ETF_TICKERS) {
-      const usResult = await fetchData(ticker, signalConfig.windowLength + 50);
-      if (usResult.error) {
-        logger.warn(`Failed to fetch US data for ${ticker}: ${usResult.error}`);
-      }
-      usData[ticker] = usResult.data;
-    }
-    for (const ticker of JP_ETF_TICKERS) {
-      const jpResult = await fetchData(ticker, signalConfig.windowLength + 50);
-      if (jpResult.error) {
-        logger.warn(`Failed to fetch JP data for ${ticker}: ${jpResult.error}`);
-      }
-      jpData[ticker] = jpResult.data;
+    const winDays = signalConfig.windowLength + 50;
+    const [usRes, jpRes] = await Promise.all([
+      fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
+      fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, config)
+    ]);
+    const usData = usRes.byTicker;
+    const jpData = jpRes.byTicker;
+    for (const [ticker, err] of Object.entries({ ...usRes.errors, ...jpRes.errors })) {
+      logger.warn(`Signal data ${ticker}: ${err}`);
     }
 
-    const { retUs, retJp, dates } = buildReturnMatrices(usData, jpData);
+    const { retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
+      usData,
+      jpData,
+      US_ETF_TICKERS,
+      JP_ETF_TICKERS,
+      config.backtest.jpWindowReturn
+    );
 
     if (retUs.length < signalConfig.windowLength) {
       return res.json({ error: 'データが不足しています', signals: [] });
@@ -623,22 +471,22 @@ app.post('/api/signal', async (req, res) => {
 
     signals.forEach((s, i) => s.rank = i + 1);
 
-    // 価格取得
     const YahooFinance = require('yahoo-finance2').default;
     const yahooFinance = new YahooFinance();
-    const prices = {};
-
-    for (const ticker of JP_ETF_TICKERS) {
-      try {
-        const quote = await fetchWithRetry(
-          () => yahooFinance.quote(ticker),
-          { maxRetries: 2, baseDelay: 500 }
-        );
-        prices[ticker] = quote.regularMarketPrice || 0;
-      } catch (e) {
-        prices[ticker] = 0;
-      }
-    }
+    const quoteResults = await Promise.all(
+      JP_ETF_TICKERS.map(async (ticker) => {
+        try {
+          const quote = await fetchWithRetry(
+            () => yahooFinance.quote(ticker),
+            { maxRetries: 2, baseDelay: 500 }
+          );
+          return [ticker, quote.regularMarketPrice || 0];
+        } catch {
+          return [ticker, 0];
+        }
+      })
+    );
+    const prices = Object.fromEntries(quoteResults);
 
     signals.forEach(s => {
       s.price = prices[s.ticker] || 0;
