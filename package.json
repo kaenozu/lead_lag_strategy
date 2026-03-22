@@ -1,10 +1,22 @@
 {
   "name": "lead_lag_strategy",
   "version": "1.0.0",
-  "description": "",
+  "description": "日米業種 ETF のリードラグ戦略（部分空間正則化 PCA）のバックテスト・シグナル生成ツール",
   "main": "backtest.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaenozu/lead_lag_strategy.git"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "setup": "node backtest_improved.js",
+    "signal": "node generate_signal.js",
+    "start": "node server.js",
+    "server": "node server.js",
+    "analysis": "node analysis.js",
+    "doctor": "node doctor.js",
+    "doctor:ci": "node doctor.js --light",
+    "paper": "node paper_trading.js",
+    "test": "node test_unit.js && node --check server.js && node --check backtest_improved.js && node --check generate_signal.js && node --check analysis.js && node --check doctor.js && node --check paper_trading.js && npm run doctor:ci"
   },
   "keywords": [],
   "author": "",
