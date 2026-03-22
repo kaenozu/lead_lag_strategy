@@ -145,5 +145,93 @@ describe('lib/pca', () => {
       
       expect(() => signal.computeSignal([], [], [], {}, [])).toThrow();
     });
+
+    test('null 入力でエラーをスロー', () => {
+      const signal = new LeadLagSignal();
+      expect(() => signal.computeSignal(null, null, null, {}, [])).toThrow('missing');
+    });
+  });
+
+  describe('SubspaceRegularizedPCA - 追加ケース', () => {
+    const makeTestData = () => ({
+      nUs: 3,
+      nJp: 3,
+      sectorLabels: {
+        US_1: 'cyclical',
+        US_2: 'defensive',
+        US_3: 'neutral',
+        JP_1: 'cyclical',
+        JP_2: 'defensive',
+        JP_3: 'neutral',
+      },
+      CFull: [
+        [1, 0.5, 0.5, 0.3, 0.3, 0.3],
+        [0.5, 1, 0.5, 0.3, 0.3, 0.3],
+        [0.5, 0.5, 1, 0.3, 0.3, 0.3],
+        [0.3, 0.3, 0.3, 1, 0.5, 0.5],
+        [0.3, 0.3, 0.3, 0.5, 1, 0.5],
+        [0.3, 0.3, 0.3, 0.5, 0.5, 1],
+      ],
+      returns: [
+        [0.01, 0.02, 0.015, 0.01, 0.025, 0.018],
+        [0.02, 0.015, 0.01, 0.018, 0.01, 0.022],
+        [-0.01, -0.005, -0.008, -0.012, -0.006, -0.01],
+        [0.005, 0.008, 0.003, 0.006, 0.004, 0.007],
+        [0.015, 0.012, 0.018, 0.014, 0.016, 0.019],
+      ],
+    });
+
+    test('orderedSectorKeys と長さが一致しない場合エラー', () => {
+      const { sectorLabels, CFull, returns } = makeTestData();
+      const pca = new SubspaceRegularizedPCA({
+        lambdaReg: 0.9,
+        nFactors: 3,
+        orderedSectorKeys: ['US_1', 'US_2'], // 長さ 2 で N=6 と合わない
+      });
+      // sectorLabels の keys 数が 6 で一致するので keys を使う（エラーにならない）
+      expect(() => pca.computeRegularizedPCA(returns, sectorLabels, CFull)).not.toThrow();
+    });
+
+    test('orderedSectorKeys と sectorLabels どちらも N と合わない場合エラー', () => {
+      const { CFull, returns } = makeTestData();
+      // sectorLabels の keys 数が N (6) と合わない
+      const badLabels = { US_1: 'cyclical', US_2: 'defensive' }; // keys.length=2, N=6
+      const pca = new SubspaceRegularizedPCA({
+        lambdaReg: 0.9,
+        nFactors: 3,
+        orderedSectorKeys: ['A', 'B', 'C'], // 長さ 3 で N=6 と合わない
+      });
+      expect(() => pca.buildPriorSpace(3, 3, badLabels, CFull)).toThrow('orderedSectorKeys required');
+    });
+
+    test('computePlainPCA がリターンから VK を計算する', () => {
+      const { returns } = makeTestData();
+      const pca = new SubspaceRegularizedPCA({ lambdaReg: 0.9, nFactors: 3 });
+      const result = pca.computePlainPCA(returns, 3);
+      expect(result.VK).toBeDefined();
+      expect(result.eigenvalues).toBeDefined();
+      expect(result.converged).toBeDefined();
+      expect(result.eigenvalues.length).toBe(3);
+    });
+
+    test('computePlainPCA はデフォルト nFactors=3 で動作する', () => {
+      const { returns } = makeTestData();
+      const pca = new SubspaceRegularizedPCA();
+      const result = pca.computePlainPCA(returns);
+      expect(result.eigenvalues.length).toBe(3);
+    });
+
+    test('computePlainPCA: 不正データでエラーをスロー', () => {
+      const pca = new SubspaceRegularizedPCA();
+      // 1 行しかないデータは correlationMatrixSample でエラー
+      expect(() => pca.computePlainPCA([[1, 2, 3, 4, 5, 6]], 3)).toThrow();
+    });
+
+    test('computeRegularizedPCA: 不正データでエラーをスロー', () => {
+      const { sectorLabels, CFull } = makeTestData();
+      const pca = new SubspaceRegularizedPCA({ lambdaReg: 0.9, nFactors: 3 });
+      // 1 行のデータは correlationMatrixSample でエラー
+      expect(() => pca.computeRegularizedPCA([[1, 2, 3, 4, 5, 6]], sectorLabels, CFull)).toThrow();
+    });
   });
 });

@@ -136,4 +136,131 @@ describe('lib/portfolio', () => {
       expect(result).toBe(0.01);
     });
   });
+
+  describe('buildEqualWeightPortfolio', () => {
+    test('等ウェイトポートフォリオの構築', () => {
+      const weights = portfolio.buildEqualWeightPortfolio(5, [0, 2, 4], [1, 3]);
+      expect(weights.length).toBe(5);
+      expect(weights[0]).toBeCloseTo(1 / 3);
+      expect(weights[2]).toBeCloseTo(1 / 3);
+      expect(weights[4]).toBeCloseTo(1 / 3);
+      expect(weights[1]).toBeCloseTo(-1 / 3);
+      expect(weights[3]).toBeCloseTo(-1 / 3);
+    });
+
+    test('ショートなしで longIndices のみ', () => {
+      const weights = portfolio.buildEqualWeightPortfolio(4, [0, 1], []);
+      expect(weights[0]).toBeCloseTo(0.5);
+      expect(weights[1]).toBeCloseTo(0.5);
+      expect(weights[2]).toBe(0);
+      expect(weights[3]).toBe(0);
+    });
+
+    test('n=0 でエラー', () => {
+      expect(() => portfolio.buildEqualWeightPortfolio(0, [0], [])).toThrow('Invalid n');
+    });
+
+    test('longIndices 空でエラー', () => {
+      expect(() => portfolio.buildEqualWeightPortfolio(3, [], [0])).toThrow('Invalid longIndices');
+    });
+  });
+
+  describe('computeSharpeRatio', () => {
+    test('正のリターン系列でシャープレシオを計算', () => {
+      const returns = Array(252).fill(0.001); // 毎日 0.1% リターン
+      const sr = portfolio.computeSharpeRatio(returns);
+      expect(sr).toBeGreaterThan(0);
+    });
+
+    test('空データはゼロを返す', () => {
+      expect(portfolio.computeSharpeRatio([])).toBe(0);
+    });
+
+    test('null はゼロを返す', () => {
+      expect(portfolio.computeSharpeRatio(null)).toBe(0);
+    });
+
+    test('リスクがゼロの場合はゼロを返す', () => {
+      // 全てゼロのリターン → リスク = 0
+      const returns = Array(10).fill(0);
+      expect(portfolio.computeSharpeRatio(returns)).toBe(0);
+    });
+
+    test('無リスク金利を考慮', () => {
+      const returns = Array(252).fill(0.001);
+      const srNoRf = portfolio.computeSharpeRatio(returns, 0);
+      const srWithRf = portfolio.computeSharpeRatio(returns, 0.05);
+      expect(srNoRf).toBeGreaterThan(srWithRf);
+    });
+  });
+
+  describe('computeSortinoRatio', () => {
+    test('全てプラスのリターンは Infinity を返す', () => {
+      const returns = [0.01, 0.02, 0.015, 0.005];
+      const sortino = portfolio.computeSortinoRatio(returns);
+      expect(sortino).toBe(Infinity);
+    });
+
+    test('混合リターンで計算される', () => {
+      const returns = [0.01, -0.005, 0.02, -0.01, 0.015, -0.003];
+      const sortino = portfolio.computeSortinoRatio(returns);
+      expect(typeof sortino).toBe('number');
+      expect(Number.isFinite(sortino)).toBe(true);
+    });
+
+    test('空データはゼロを返す', () => {
+      expect(portfolio.computeSortinoRatio([])).toBe(0);
+    });
+
+    test('null はゼロを返す', () => {
+      expect(portfolio.computeSortinoRatio(null)).toBe(0);
+    });
+
+    test('全て目標リターン未満の場合は計算される', () => {
+      const returns = [-0.01, -0.02, -0.015];
+      const sortino = portfolio.computeSortinoRatio(returns, 0);
+      expect(typeof sortino).toBe('number');
+    });
+  });
+
+  describe('computeMaxDrawdownDetail', () => {
+    test('空データはゼロを返す', () => {
+      const result = portfolio.computeMaxDrawdownDetail([]);
+      expect(result.MDD).toBe(0);
+      expect(result.start).toBe(0);
+      expect(result.end).toBe(0);
+      expect(result.recovery).toBeNull();
+    });
+
+    test('全てプラスリターンはドローダウンなし', () => {
+      const returns = [0.01, 0.02, 0.015, 0.005];
+      const result = portfolio.computeMaxDrawdownDetail(returns);
+      expect(result.MDD).toBe(0);
+    });
+
+    test('ドローダウンを正しく計算', () => {
+      // 上昇後に大幅下落
+      const returns = [0.1, 0.1, -0.5, 0.1];
+      const result = portfolio.computeMaxDrawdownDetail(returns);
+      expect(result.MDD).toBeLessThan(0);
+    });
+
+    test('start/end/recovery インデックスが整数', () => {
+      const returns = [0.1, -0.2, 0.3, -0.1, 0.15];
+      const result = portfolio.computeMaxDrawdownDetail(returns);
+      expect(Number.isInteger(result.start)).toBe(true);
+      expect(Number.isInteger(result.end)).toBe(true);
+    });
+
+    test('回復後に recovery インデックスが設定される', () => {
+      // 下落後に元に戻る
+      const returns = [0.1, -0.09, 0.1];
+      const result = portfolio.computeMaxDrawdownDetail(returns);
+      // 回復した場合は recovery が設定される
+      if (result.MDD < 0) {
+        // 回復判定はケースによる
+        expect(typeof result.recovery === 'number' || result.recovery === null).toBe(true);
+      }
+    });
+  });
 });

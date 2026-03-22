@@ -198,4 +198,142 @@ describe('lib/math - Enhanced', () => {
       expect(() => math.identity(0)).toThrow('must be positive');
     });
   });
+
+  describe('validateVector', () => {
+    test('有効なベクトル', () => {
+      expect(() => math.validateVector([1, 2, 3])).not.toThrow();
+    });
+
+    test('空ベクトルでエラー', () => {
+      expect(() => math.validateVector([])).toThrow('Invalid vector');
+    });
+
+    test('null でエラー', () => {
+      expect(() => math.validateVector(null)).toThrow('Invalid vector');
+    });
+
+    test('NaN を含むベクトルでエラー', () => {
+      expect(() => math.validateVector([1, NaN, 3])).toThrow('Invalid number');
+    });
+  });
+
+  describe('dotProduct', () => {
+    test('基本的な内積', () => {
+      expect(math.dotProduct([1, 2, 3], [4, 5, 6])).toBe(32);
+    });
+
+    test('次元不一致でエラー', () => {
+      expect(() => math.dotProduct([1, 2], [1, 2, 3])).toThrow('dimension mismatch');
+    });
+  });
+
+  describe('transpose', () => {
+    test('2x3 行列の転置', () => {
+      const m = [[1, 2, 3], [4, 5, 6]];
+      const t = math.transpose(m);
+      expect(t.length).toBe(3);
+      expect(t[0]).toEqual([1, 4]);
+    });
+  });
+
+  describe('matmul', () => {
+    test('次元不一致でエラー', () => {
+      expect(() => math.matmul([[1, 2]], [[1, 2]])).toThrow('dimensions mismatch');
+    });
+  });
+
+  describe('elementWiseMultiply', () => {
+    test('要素ごとの積', () => {
+      expect(math.elementWiseMultiply([2, 3, 4], [5, 6, 7])).toEqual([10, 18, 28]);
+    });
+
+    test('次元不一致でエラー', () => {
+      expect(() => math.elementWiseMultiply([1, 2], [1, 2, 3])).toThrow('dimension mismatch');
+    });
+  });
+
+  describe('scalarMultiply', () => {
+    test('スカラー倍', () => {
+      expect(math.scalarMultiply([1, 2, 3], 3)).toEqual([3, 6, 9]);
+    });
+
+    test('0 倍はゼロベクトル', () => {
+      expect(math.scalarMultiply([1, 2, 3], 0)).toEqual([0, 0, 0]);
+    });
+  });
+
+  describe('vectorAdd', () => {
+    test('ベクトルの加算', () => {
+      expect(math.vectorAdd([1, 2, 3], [4, 5, 6])).toEqual([5, 7, 9]);
+    });
+
+    test('次元不一致でエラー', () => {
+      expect(() => math.vectorAdd([1, 2], [1, 2, 3])).toThrow('dimension mismatch');
+    });
+  });
+
+  describe('vectorSubtract', () => {
+    test('ベクトルの減算', () => {
+      expect(math.vectorSubtract([5, 7, 9], [1, 2, 3])).toEqual([4, 5, 6]);
+    });
+
+    test('次元不一致でエラー', () => {
+      expect(() => math.vectorSubtract([1, 2], [1, 2, 3])).toThrow('dimension mismatch');
+    });
+  });
+
+  describe('mean', () => {
+    test('ベクトルの平均', () => {
+      expect(math.mean([1, 2, 3, 4, 5])).toBeCloseTo(3);
+    });
+
+    test('単一要素', () => {
+      expect(math.mean([42])).toBe(42);
+    });
+  });
+
+  describe('std', () => {
+    test('既知の標準偏差', () => {
+      // 不偏標準偏差 (ddof=1): Math.sqrt(sum_sq / (n-1))
+      // [2, 4, 4, 4, 5, 5, 7, 9]: mean=5, sum_sq = 9+1+1+1+0+0+4+16 = 32, std = sqrt(32/7)
+      const expected = Math.sqrt(32 / 7);
+      expect(math.std([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(expected, 5);
+    });
+
+    test('2 要素未満でエラー', () => {
+      expect(() => math.std([1])).toThrow('at least 2 elements');
+    });
+  });
+
+  describe('copyMatrix', () => {
+    test('行列をディープコピー', () => {
+      const original = [[1, 2], [3, 4]];
+      const copy = math.copyMatrix(original);
+      copy[0][0] = 99;
+      expect(original[0][0]).toBe(1); // 元のデータは不変
+      expect(copy[0][0]).toBe(99);
+    });
+  });
+
+  describe('validateMatrix - 追加ケース', () => {
+    test('列数 0 でエラー', () => {
+      expect(() => math.validateMatrix([[]])).toThrow('no columns');
+    });
+
+    test('NaN を含む行列でエラー', () => {
+      expect(() => math.validateMatrix([[1, NaN]])).toThrow('Invalid number');
+    });
+  });
+
+  describe('eigenDecomposition - 追加ケース', () => {
+    test('非正方行列でエラー', () => {
+      expect(() => math.eigenDecomposition([[1, 2, 3], [4, 5, 6]])).toThrow('square');
+    });
+
+    test('k が n を超える場合は n に制限', () => {
+      const matrix = [[2, 1], [1, 2]];
+      const { eigenvalues } = math.eigenDecomposition(matrix, 10);
+      expect(eigenvalues.length).toBe(2); // n=2 に制限
+    });
+  });
 });
