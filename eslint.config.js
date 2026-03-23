@@ -38,7 +38,27 @@ module.exports = [
         clearInterval: 'readonly',
         setImmediate: 'readonly',
         clearImmediate: 'readonly',
-        global: 'readonly'
+        global: 'readonly',
+        // Jest globals
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        jest: 'readonly',
+        fail: 'readonly',
+        // Browser globals (for e2e tests and fetch polyfills)
+        window: 'readonly',
+        document: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+        URLSearchParams: 'readonly',
+        Headers: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly'
       }
     },
     rules: {
@@ -53,4 +73,3 @@ module.exports = [
     }
   }
 ];
-
