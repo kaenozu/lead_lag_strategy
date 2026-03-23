@@ -283,6 +283,9 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       weights = buildPortfolio(signal, config.quantile);
     }
 
+    // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
+    // シグナルはt-1の終値までのデータで生成されるため、t日の始値で取引しOCリターンを収益とすることが
+    // 正しいアプローチ。終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
     const retNext = returnsJpOc[i].values;
 
     // ポートフォオリターン計算
@@ -324,6 +327,8 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.3
     }
 
     const weights = buildPortfolio(momentum, quantile);
+    // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
+    // 終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
     const retNext = returnsJpOc[i].values;
 
     let strategyRet = 0;
@@ -540,7 +545,11 @@ async function main() {
   logger.info('Results saved', { outputDir });
 }
 
-main().catch(error => {
-  logger.error('Backtest failed', { error: error.message, stack: error.stack });
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(error => {
+    logger.error('Backtest failed', { error: error.message, stack: error.stack });
+    process.exit(1);
+  });
+}
+
+module.exports = { runBacktest, runMomentumStrategy };
