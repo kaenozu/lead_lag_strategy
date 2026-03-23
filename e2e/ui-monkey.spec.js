@@ -164,56 +164,56 @@ test.describe('UI モンキーテスト（API モック）', () => {
         }
 
         switch (action) {
-          case 'help_open':
-            await safeClick(page.locator('#helpBtn'));
-            break;
-          case 'help_close_overlay':
-            if (await page.locator('#helpModal.active').isVisible()) {
-              await page.locator('#helpModal').click({ position: { x: 5, y: 5 } });
-            }
-            break;
-          case 'help_close_x':
-            if (await page.locator('#helpModal.active').isVisible()) {
-              await safeClick(page.locator('.modal-close'));
-            }
-            break;
-          case 'tab_all':
-            await page.locator('.tab[data-tab="all"]').click();
-            break;
-          case 'tab_buy':
-            await page.locator('.tab[data-tab="buy"]').click();
-            break;
-          case 'tab_sell':
-            await page.locator('.tab[data-tab="sell"]').click();
-            break;
-          case 'signal':
-            await page.locator('#generateSignalBtn').click();
-            await page.waitForTimeout(80);
-            break;
-          case 'backtest':
-            await page.locator('#runBacktestBtn').click();
-            await page.waitForTimeout(120);
-            break;
-          case 'export':
-            await safeClick(page.locator('#exportCsvBtn'));
-            break;
-          case 'scroll':
-            await page.mouse.wheel(0, pick([200, -150, 400, -200]));
-            break;
-          case 'fill_window':
-            await page.locator('#windowLength').fill(String(20 + Math.floor(rand() * 180)));
-            break;
-          case 'fill_lambda':
-            await page.locator('#lambdaReg').fill((rand()).toFixed(2));
-            break;
-          case 'fill_quantile':
-            await page.locator('#quantile').fill((0.1 + rand() * 0.39).toFixed(2));
-            break;
-          case 'click_banner':
-            await page.locator('.disclosure-banner').click();
-            break;
-          default:
-            break;
+        case 'help_open':
+          await safeClick(page.locator('#helpBtn'));
+          break;
+        case 'help_close_overlay':
+          if (await page.locator('#helpModal.active').isVisible()) {
+            await page.locator('#helpModal').click({ position: { x: 5, y: 5 } });
+          }
+          break;
+        case 'help_close_x':
+          if (await page.locator('#helpModal.active').isVisible()) {
+            await safeClick(page.locator('.modal-close'));
+          }
+          break;
+        case 'tab_all':
+          await page.locator('.tab[data-tab="all"]').click();
+          break;
+        case 'tab_buy':
+          await page.locator('.tab[data-tab="buy"]').click();
+          break;
+        case 'tab_sell':
+          await page.locator('.tab[data-tab="sell"]').click();
+          break;
+        case 'signal':
+          await page.locator('#generateSignalBtn').click();
+          await page.waitForTimeout(80);
+          break;
+        case 'backtest':
+          await page.locator('#runBacktestBtn').click();
+          await page.waitForTimeout(120);
+          break;
+        case 'export':
+          await safeClick(page.locator('#exportCsvBtn'));
+          break;
+        case 'scroll':
+          await page.mouse.wheel(0, pick([200, -150, 400, -200]));
+          break;
+        case 'fill_window':
+          await page.locator('#windowLength').fill(String(20 + Math.floor(rand() * 180)));
+          break;
+        case 'fill_lambda':
+          await page.locator('#lambdaReg').fill((rand()).toFixed(2));
+          break;
+        case 'fill_quantile':
+          await page.locator('#quantile').fill((0.1 + rand() * 0.39).toFixed(2));
+          break;
+        case 'click_banner':
+          await page.locator('.disclosure-banner').click();
+          break;
+        default:
+          break;
         }
       } catch (e) {
         throw new Error(`Monkey step ${i} action=${action}: ${e.message}`);

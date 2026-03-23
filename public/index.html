@@ -1010,11 +1010,13 @@
         </div>
     </div>
 
+    <script src="/js/time-utils.js"></script>
+    <script src="/js/app-state.js"></script>
+    <script src="/js/signal-renderer.js"></script>
+    <script src="/js/api-client.js"></script>
     <script>
         /* 同一オリジンで配信される前提（file:// では API に届かない） */
         const API_BASE = '/api';
-        let currentSignals = {};
-        let currentFilter = 'all';
 
         // ヘルプモーダル
         function openHelp() {
@@ -1106,9 +1108,8 @@
         // ステータス確認
         async function checkStatus() {
             try {
-                const res = await fetch(`${API_BASE}/config`, { cache: 'no-store' });
-                if (res.ok) {
-                    const data = await res.json();
+                const { ok, data } = await window.apiClient.getJson(`${API_BASE}/config`, { cache: 'no-store' });
+                if (ok) {
                     syncDataSourceFormFromServer(data);
                     renderDataSources(data.dataSources);
                     document.getElementById('statusDot').className = 'status-dot online';
@@ -1146,24 +1147,8 @@
             return `${c.windowLength}|${c.lambdaReg}|${c.quantile}`;
         }
 
-        function jstCalendarDay() {
-            return new Intl.DateTimeFormat('sv-SE', {
-                timeZone: 'Asia/Tokyo',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit'
-            }).format(new Date());
-        }
-
-        function isAutoSignalWindowJst() {
-            const nowJst = new Date(
-                new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
-            );
-            const day = nowJst.getDay(); // 0:Sun ... 6:Sat
-            if (day === 0 || day === 6) return false;
-            const minutes = nowJst.getHours() * 60 + nowJst.getMinutes();
-            return minutes >= (8 * 60 + 45) && minutes <= (8 * 60 + 55);
-        }
+        const jstCalendarDay = () => window.timeUtils.jstCalendarDay();
+        const isAutoSignalWindowJst = () => window.timeUtils.isAutoSignalWindowJst();
 
         function setSignalCacheNote(visible, text) {
             const el = document.getElementById('signalCacheNote');
@@ -1252,8 +1237,8 @@
                 document.getElementById('exportSection').style.display = 'none';
                 return;
             }
-            currentSignals = data;
-            currentFilter = preferredTab;
+            window.appState.setSignals(data);
+            window.appState.setFilter(preferredTab);
             if (recoveryEl && data.dataRecoveryNote) {
                 recoveryEl.textContent = data.dataRecoveryNote;
                 recoveryEl.style.display = 'block';
@@ -1262,8 +1247,8 @@
                 sourceEl.textContent = `取得経路: ${data.sourceSummary}`;
                 sourceEl.style.display = 'block';
             }
-            renderTodaySummary();
-            renderSignals(preferredTab);
+            window.signalRenderer.renderTodaySummary(window.appState.getSignals());
+            window.signalRenderer.renderSignals(window.appState.getSignals(), preferredTab);
             showCandidateSections(data);
             document.getElementById('exportSection').style.display = 'block';
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1307,12 +1292,7 @@
             }
             try {
                 const config = getParamConfig();
-                const res = await fetch(`${API_BASE}/signal`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                const data = await res.json();
+                const { data } = await window.apiClient.postJson(`${API_BASE}/signal`, config);
                 applySignalPayload(data, { fromCache: false, preferredTab });
             } catch (e) {
                 document.getElementById('todaySummary').style.display = 'none';
@@ -1364,12 +1344,7 @@
 
             try {
                 const config = getParamConfig();
-                const res = await fetch(`${API_BASE}/backtest`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                const data = await res.json();
+                const { data } = await window.apiClient.postJson(`${API_BASE}/backtest`, config);
 
                 if (data.error) {
                     const extra = data.detail ? `\n\n${data.detail}` : '';
@@ -1462,26 +1437,7 @@
         }
 
         function renderTodaySummary() {
-            const el = document.getElementById('todaySummary');
-            if (!el || !currentSignals.buyCandidates) {
-                if (el) el.style.display = 'none';
-                return;
-            }
-            const fmt = arr => arr.map(s => `<strong>${s.ticker}</strong>（${s.name}）`).join('、');
-            const buys = currentSignals.buyCandidates || [];
-            const sells = currentSignals.sellCandidates || [];
-            el.innerHTML = `
-                <div class="summary-date">データの基準日: ${currentSignals.latestDate || '--'}（次に市場が開く日の朝〜始まり直後の判断に使います）</div>
-                <div class="summary-row summary-buy">
-                    <span class="summary-label">買い候補（強いと出ている業種のファンド）</span>
-                    <p class="summary-list">${buys.length ? fmt(buys) : '—'}</p>
-                </div>
-                <div class="summary-row summary-sell">
-                    <span class="summary-label">売り候補（弱いと出ている業種・現物なら買わないことが多い）</span>
-                    <p class="summary-list">${sells.length ? fmt(sells) : '—'}</p>
-                </div>
-            `;
-            el.style.display = 'block';
+            window.signalRenderer.renderTodaySummary(window.appState.getSignals());
         }
 
         // パラメータ保存（手動変更時）
@@ -1506,9 +1462,8 @@
         /** サーバー既定（lib/config・runtime JSON）をフォームに反映。失敗時は localStorage または HTML 既定 */
         async function applyServerConfigOrStorage() {
             try {
-                const res = await fetch(`${API_BASE}/config`, { cache: 'no-store' });
-                if (res.ok) {
-                    const c = await res.json();
+                const { ok, data: c } = await window.apiClient.getJson(`${API_BASE}/config`, { cache: 'no-store' });
+                if (ok) {
                     document.getElementById('windowLength').value = String(c.windowLength);
                     document.getElementById('lambdaReg').value = String(c.lambdaReg);
                     document.getElementById('quantile').value = String(c.quantile);
@@ -1527,16 +1482,11 @@
             const status = document.getElementById('dataSourceSaveStatus');
             status.textContent = '保存中…';
             try {
-                const res = await fetch(`${API_BASE}/config`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        dataMode: document.getElementById('dataModeSelect').value,
-                        usOhlcvProvider: document.getElementById('usOhlcvProviderSelect').value
-                    })
+                const { ok, data: j } = await window.apiClient.postJson(`${API_BASE}/config`, {
+                    dataMode: document.getElementById('dataModeSelect').value,
+                    usOhlcvProvider: document.getElementById('usOhlcvProviderSelect').value
                 });
-                const j = await res.json().catch(() => ({}));
-                if (!res.ok) {
+                if (!ok) {
                     const msg =
                         (j.details && j.details.length && j.details.join('；')) ||
                         j.error ||
@@ -1628,14 +1578,16 @@
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
-                currentFilter = tab.dataset.tab;
-                renderSignals(currentFilter);
+                window.appState.setFilter(tab.dataset.tab);
+                renderSignals(window.appState.getFilter());
             });
         });
 
         // CSV エクスポート
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
-            if (currentSignals.length === 0) return;
+            const currentSignals = window.appState.getSignals();
+            const currentFilter = window.appState.getFilter();
+            if (!currentSignals.signals || currentSignals.signals.length === 0) return;
             
             // 現在のタブに応じてエクスポート
             const signalsToExport = currentFilter === 'buy' ? 
@@ -1673,65 +1625,7 @@
         
         // シグナル表示
         function renderSignals(filter = 'all') {
-            if (!currentSignals.signals) {
-                document.getElementById('signalContent').innerHTML = `
-                    <div class="loading">
-                        <p>一覧がありません。左の「シグナル生成」で取得してください。</p>
-                    </div>
-                `;
-                return;
-            }
-
-            renderTodaySummary();
-
-            let signals = [...currentSignals.signals];
-
-            if (filter === 'buy') {
-                signals = currentSignals.buyCandidates || [];
-            } else if (filter === 'sell') {
-                signals = currentSignals.sellCandidates || [];
-            }
-
-            const total = currentSignals.signals.length;
-            const buyCount = currentSignals.buyCandidates?.length || 0;
-            const sellCount = currentSignals.sellCandidates?.length || 0;
-
-            let html = `
-                <div style="margin-bottom: 15px; font-size: 14px; color: #666;">
-                    全 ${total} 銘柄 | 買い候補 ${buyCount} | 売り候補 ${sellCount} | 基準日 ${currentSignals.latestDate || '--'}
-                </div>
-                <table class="signal-table">
-                    <thead>
-                        <tr>
-                            <th>ランク</th>
-                            <th>ティッカー</th>
-                            <th>業種</th>
-                            <th>強さの目安</th>
-                            <th>参考の値段</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            signals.forEach(s => {
-                const rankClass = s.rank <= buyCount ? 'top' : s.rank > total - sellCount ? 'bottom' : 'middle';
-                const signalClass = s.signal > 0 ? 'positive' : 'negative';
-                const signalIcon = s.signal > 0 ? '📈' : s.signal < 0 ? '📉' : '➖';
-                const priceCell = s.price > 0 ? s.priceFormatted : '—';
-
-                html += `
-                    <tr>
-                        <td><span class="rank-badge ${rankClass}">${s.rank}</span></td>
-                        <td style="font-weight: bold;">${s.ticker}</td>
-                        <td>${s.name}</td>
-                        <td class="signal-value ${signalClass}">${signalIcon} ${(s.signal * 1000).toFixed(2)}</td>
-                        <td style="font-size: 12px; color: #666;">${priceCell}</td>
-                    </tr>
-                `;
-            });
-
-            html += '</tbody></table>';
-            document.getElementById('signalContent').innerHTML = html;
+            window.signalRenderer.renderSignals(window.appState.getSignals(), filter);
         }
         
         // 候補セクション表示
