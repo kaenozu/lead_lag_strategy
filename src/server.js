@@ -50,6 +50,8 @@ const {
   getUiConfigPayload,
   updateBacktestConfig
 } = require('./server/modules/configStore');
+const { registerConfigRoutes } = require('./server/routes/configRoutes');
+const { registerSystemRoutes } = require('./server/routes/systemRoutes');
 
 const logger = createLogger('Server');
 
@@ -578,73 +580,19 @@ app.post('/api/signal', async (req, res) => {
   }
 });
 
-/**
- * 設定取得 API
- */
-app.get('/api/config', (req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.json(getUiConfigPayload({
-    disclosure: riskPayload(),
-    dataSources: getDataSourcesForUi()
-  }));
+registerConfigRoutes(app, {
+  config,
+  logger,
+  riskPayload,
+  getDataSourcesForUi,
+  getUiConfigPayload,
+  validateConfigUpdateParams,
+  getDataSourceUpdateErrors,
+  applyDataSourceSettings,
+  updateBacktestConfig
 });
 
-/**
- * 設定更新 API
- */
-app.post('/api/config', (req, res) => {
-  const { windowLength, lambdaReg, quantile } = req.body;
-  const dataMode = req.body.dataMode ?? req.body.mode;
-  const usOhlcvProvider = req.body.usOhlcvProvider ?? req.body.us_ohlcv_provider;
-  const errors = [];
-
-  const validation = validateConfigUpdateParams({ windowLength, lambdaReg, quantile });
-  errors.push(...validation.errors);
-
-  errors.push(
-    ...getDataSourceUpdateErrors({
-      mode: dataMode,
-      usOhlcvProvider
-    })
-  );
-
-  if (errors.length > 0) {
-    return res.status(400).json({ error: 'Invalid parameters', details: errors });
-  }
-
-  applyDataSourceSettings({
-    mode: dataMode,
-    usOhlcvProvider
-  });
-  updateBacktestConfig(validation.updates);
-
-  logger.info('Configuration updated via API', {
-    windowLength: config.backtest.windowLength,
-    lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile,
-    dataMode: config.data.mode,
-    usOhlcvProvider: config.data.usOhlcvProvider
-  });
-
-  res.json(getUiConfigPayload({
-    disclosure: riskPayload(),
-    dataSources: getDataSourcesForUi()
-  }));
-});
-
-/**
- * 免責・リスク説明（Web / クライアント用）
- */
-app.get('/api/disclosure', (req, res) => {
-  res.json(riskPayload());
-});
-
-/**
- * ヘルスチェック
- */
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+registerSystemRoutes(app, { riskPayload });
 
 // ============================================
 // エラーハンドリング（全ルートの後）
