@@ -31,9 +31,9 @@ const {
 } = require('../lib/math');
 const {
   fetchWithRetry,
-  fetchOhlcvForTickers,
   buildReturnMatricesFromOhlcv
 } = require('../lib/data');
+const { fetchMarketDataForTickers } = require('../lib/data/providerAdapter');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 const { riskPayload } = require('../lib/disclosure');
 const { summarizeSignalSourcePaths, buildOpsDecision } = require('../lib/opsDecision');
@@ -42,10 +42,22 @@ const {
   isAlreadyFullYahooPath,
   configForYahooDataRecovery
 } = require('../lib/data/sourceRecovery');
+const {
+  validateBacktestParams,
+  validateConfigUpdateParams
+} = require('./modules/paramValidation');
+const {
+  getUiConfigPayload,
+  updateBacktestConfig
+} = require('./modules/configStore');
 
 const logger = createLogger('Server');
 
 const app = express();
+
+if (config.server.trustProxy) {
+  app.set('trust proxy', config.server.trustProxy);
+}
 
 // ============================================
 // セキュリティ設定
@@ -92,68 +104,6 @@ if (configErrors.length > 0) {
 // ============================================
 // 定数 (lib/constants.js からインポート済み)
 // ============================================
-
-// ============================================
-// 入力検証ヘルパー
-// ============================================
-
-/**
- * リクエストパラメータを検証・サニタイズ
- */
-function validateBacktestParams(body) {
-  const errors = [];
-  const params = {};
-
-  // windowLength
-  if (body.windowLength !== undefined) {
-    const val = parseInt(body.windowLength, 10);
-    if (isNaN(val) || val < 10 || val > 500) {
-      errors.push('windowLength must be between 10 and 500');
-    } else {
-      params.windowLength = val;
-    }
-  }
-
-  // lambdaReg
-  if (body.lambdaReg !== undefined) {
-    const val = parseFloat(body.lambdaReg);
-    if (isNaN(val) || val < 0 || val > 1) {
-      errors.push('lambdaReg must be between 0 and 1');
-    } else {
-      params.lambdaReg = val;
-    }
-  }
-
-  // quantile
-  if (body.quantile !== undefined) {
-    const val = parseFloat(body.quantile);
-    if (isNaN(val) || val <= 0 || val > 0.5) {
-      errors.push('quantile must be between 0 and 0.5');
-    } else {
-      params.quantile = val;
-    }
-  }
-
-  // nFactors
-  if (body.nFactors !== undefined) {
-    const val = parseInt(body.nFactors, 10);
-    if (isNaN(val) || val < 1 || val > 10) {
-      errors.push('nFactors must be between 1 and 10');
-    } else {
-      params.nFactors = val;
-    }
-  }
-
-  return { errors, params };
-}
-
-/**
- * 数値パラメータを安全に解析（デフォルト値付き）
- */
-function parseLambdaReg(value, defaultVal) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : defaultVal;
-}
 
 /**
  * 表示用メトリクスに変換
@@ -211,8 +161,8 @@ app.post('/api/backtest', async (req, res) => {
     logger.info('Fetching US/JP ETF data (parallel)');
     const needDays = backtestConfig.warmupPeriod + 10;
     let [usRes, jpRes] = await Promise.all([
-      fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, config),
-      fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, config)
+      fetchMarketDataForTickers(US_ETF_TICKERS, chartDays, config),
+      fetchMarketDataForTickers(JP_ETF_TICKERS, chartDays, config)
     ]);
     let usData = usRes.byTicker;
     let jpData = jpRes.byTicker;
@@ -242,8 +192,8 @@ app.post('/api/backtest', async (req, res) => {
       });
       const recoverCfg = configForYahooDataRecovery(config);
       [usRes, jpRes] = await Promise.all([
-        fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, recoverCfg),
-        fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, recoverCfg)
+        fetchMarketDataForTickers(US_ETF_TICKERS, chartDays, recoverCfg),
+        fetchMarketDataForTickers(JP_ETF_TICKERS, chartDays, recoverCfg)
       ]);
       usData = usRes.byTicker;
       jpData = jpRes.byTicker;
@@ -449,8 +399,8 @@ app.post('/api/signal', async (req, res) => {
     const winDays = Math.max(280, signalConfig.windowLength + 160);
 
     let [usRes, jpRes] = await Promise.all([
-      fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
-      fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, config)
+      fetchMarketDataForTickers(US_ETF_TICKERS, winDays, config),
+      fetchMarketDataForTickers(JP_ETF_TICKERS, winDays, config)
     ]);
     let usData = usRes.byTicker;
     let jpData = jpRes.byTicker;
@@ -479,8 +429,8 @@ app.post('/api/signal', async (req, res) => {
       });
       const recoverCfg = configForYahooDataRecovery(config);
       [usRes, jpRes] = await Promise.all([
-        fetchOhlcvForTickers(US_ETF_TICKERS, winDays, recoverCfg),
-        fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, recoverCfg)
+        fetchMarketDataForTickers(US_ETF_TICKERS, winDays, recoverCfg),
+        fetchMarketDataForTickers(JP_ETF_TICKERS, winDays, recoverCfg)
       ]);
       usData = usRes.byTicker;
       jpData = jpRes.byTicker;
@@ -633,16 +583,10 @@ app.post('/api/signal', async (req, res) => {
  */
 app.get('/api/config', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.json({
-    windowLength: config.backtest.windowLength,
-    nFactors: config.backtest.nFactors,
-    lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile,
-    dataMode: config.data.mode,
-    usOhlcvProvider: config.data.usOhlcvProvider,
+  res.json(getUiConfigPayload({
     disclosure: riskPayload(),
     dataSources: getDataSourcesForUi()
-  });
+  }));
 });
 
 /**
@@ -654,43 +598,15 @@ app.post('/api/config', (req, res) => {
   const usOhlcvProvider = req.body.usOhlcvProvider ?? req.body.us_ohlcv_provider;
   const errors = [];
 
+  const validation = validateConfigUpdateParams({ windowLength, lambdaReg, quantile });
+  errors.push(...validation.errors);
+
   errors.push(
     ...getDataSourceUpdateErrors({
       mode: dataMode,
       usOhlcvProvider
     })
   );
-
-  let nextWindowLength = config.backtest.windowLength;
-  let nextLambdaReg = config.backtest.lambdaReg;
-  let nextQuantile = config.backtest.quantile;
-
-  if (windowLength !== undefined) {
-    const val = parseInt(windowLength, 10);
-    if (isNaN(val) || val < 10 || val > 500) {
-      errors.push('windowLength must be between 10 and 500');
-    } else {
-      nextWindowLength = val;
-    }
-  }
-
-  if (lambdaReg !== undefined) {
-    const val = parseFloat(lambdaReg);
-    if (isNaN(val) || val < 0 || val > 1) {
-      errors.push('lambdaReg must be between 0 and 1');
-    } else {
-      nextLambdaReg = val;
-    }
-  }
-
-  if (quantile !== undefined) {
-    const val = parseFloat(quantile);
-    if (isNaN(val) || val <= 0 || val > 0.5) {
-      errors.push('quantile must be between 0 and 0.5');
-    } else {
-      nextQuantile = val;
-    }
-  }
 
   if (errors.length > 0) {
     return res.status(400).json({ error: 'Invalid parameters', details: errors });
@@ -700,9 +616,7 @@ app.post('/api/config', (req, res) => {
     mode: dataMode,
     usOhlcvProvider
   });
-  config.backtest.windowLength = nextWindowLength;
-  config.backtest.lambdaReg = nextLambdaReg;
-  config.backtest.quantile = nextQuantile;
+  updateBacktestConfig(validation.updates);
 
   logger.info('Configuration updated via API', {
     windowLength: config.backtest.windowLength,
@@ -712,16 +626,10 @@ app.post('/api/config', (req, res) => {
     usOhlcvProvider: config.data.usOhlcvProvider
   });
 
-  res.json({
-    windowLength: config.backtest.windowLength,
-    nFactors: config.backtest.nFactors,
-    lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile,
-    dataMode: config.data.mode,
-    usOhlcvProvider: config.data.usOhlcvProvider,
+  res.json(getUiConfigPayload({
     disclosure: riskPayload(),
     dataSources: getDataSourcesForUi()
-  });
+  }));
 });
 
 /**

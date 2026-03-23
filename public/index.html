@@ -1010,6 +1010,7 @@
         </div>
     </div>
 
+    <script src="/js/time-utils.js"></script>
     <script>
         /* 同一オリジンで配信される前提（file:// では API に届かない） */
         const API_BASE = '/api';
@@ -1146,33 +1147,8 @@
             return `${c.windowLength}|${c.lambdaReg}|${c.quantile}`;
         }
 
-        function jstCalendarDay() {
-            return new Intl.DateTimeFormat('sv-SE', {
-                timeZone: 'Asia/Tokyo',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit'
-            }).format(new Date());
-        }
-
-        function isAutoSignalWindowJst() {
-            // JSTの時刻要素を直接取り出し、文字列→Date再パースの環境依存を避ける。
-            const parts = new Intl.DateTimeFormat('en-US', {
-                timeZone: 'Asia/Tokyo',
-                weekday: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            }).formatToParts(new Date());
-            const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
-            const weekday = partMap.weekday; // Sun ... Sat
-            if (weekday === 'Sun' || weekday === 'Sat') return false;
-            const hour = parseInt(partMap.hour, 10);
-            const minute = parseInt(partMap.minute, 10);
-            if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
-            const minutes = hour * 60 + minute;
-            return minutes >= (8 * 60 + 45) && minutes <= (8 * 60 + 55);
-        }
+        const jstCalendarDay = () => window.timeUtils.jstCalendarDay();
+        const isAutoSignalWindowJst = () => window.timeUtils.isAutoSignalWindowJst();
 
         function setSignalCacheNote(visible, text) {
             const el = document.getElementById('signalCacheNote');
