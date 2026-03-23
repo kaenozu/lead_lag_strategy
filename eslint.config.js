@@ -15,14 +15,17 @@ module.exports = [
         __filename: 'readonly',
         require: 'readonly',
         module: 'readonly',
+        exports: 'readonly',
+        // CommonJS globals
+        global: 'readonly',
         exports: 'readonly'
       }
     },
     rules: {
-      'indent': ['error', 2],
+      indent: ['error', 2],
       'linebreak-style': ['error', 'unix'],
-      'quotes': ['error', 'single'],
-      'semi': ['error', 'always'],
+      quotes: ['error', 'single'],
+      semi: ['error', 'always'],
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-console': 'off',
       'prefer-const': 'warn',
