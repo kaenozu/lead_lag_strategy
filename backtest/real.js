@@ -12,23 +12,22 @@
 const fs = require('fs');
 const path = require('path');
 
-// ライブラリ
-const { createLogger } = require('./lib/logger');
-const { config, validate: validateConfig } = require('./lib/config');
-const { LeadLagSignal } = require('./lib/pca');
+// ライブラリ（パスは backtest/ からの相対）
+const { createLogger } = require('../lib/logger');
+const { config, validate: validateConfig } = require('../lib/config');
+const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
   applyTransactionCosts,
   computeYearlyPerformance
-} = require('./lib/portfolio');
-const { correlationMatrixSample } = require('./lib/math');
+} = require('../lib/portfolio');
+const { correlationMatrixSample } = require('../lib/math');
 const {
-  fetchWithRetry,
+  fetchOhlcvDateRangeForTickers,
   loadCSV,
-  saveCSV,
   buildPaperAlignedReturnRows
-} = require('./lib/data');
+} = require('../lib/data');
 
 const logger = createLogger('BacktestReal');
 
@@ -60,51 +59,6 @@ const SECTOR_LABELS = {
 // ============================================================================
 // データ取得
 // ============================================================================
-
-/**
- * Yahoo Finance からデータを取得（リトライ付き）
- */
-async function fetchYahooFinanceData(ticker, startDate, endDate) {
-  try {
-    const YahooFinance = require('yahoo-finance2').default;
-    const yahooFinance = new YahooFinance();
-
-    const result = await fetchWithRetry(
-      () => yahooFinance.chart(ticker, {
-        period1: startDate,
-        period2: endDate,
-        interval: '1d'
-      }),
-      { maxRetries: 3, baseDelay: 1000 }
-    );
-
-    return result.quotes
-      .filter(q => q.close !== null && q.close > 0)
-      .map(q => ({
-        date: q.date.toISOString().split('T')[0],
-        open: q.open,
-        high: q.high,
-        low: q.low,
-        close: q.close,
-        volume: q.volume
-      }));
-  } catch (error) {
-    logger.warn(`Failed to fetch ${ticker}`, { error: error.message });
-    return [];
-  }
-}
-
-/**
- * 全銘柄のデータを取得
- */
-async function fetchAllData(tickers, startDate, endDate) {
-  const results = {};
-  for (const ticker of tickers) {
-    logger.info(`Fetching ${ticker}...`);
-    results[ticker] = await fetchYahooFinanceData(ticker, startDate, endDate);
-  }
-  return results;
-}
 
 /**
  * ローカルデータ読み込み
@@ -244,12 +198,14 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
 
   // PCA_PLAIN は plainConfig（lambdaReg: 0）で LeadLagSignal と同等
   const signalGenerator = new LeadLagSignal(config);
+  let prevWeights = null;
 
   for (let i = config.warmupPeriod; i < returnsJpOc.length; i++) {
     const windowStart = i - config.windowLength;
     const retUsWindow = returnsUs.slice(windowStart, i).map(r => r.values);
     const retJpWindow = returnsJp.slice(windowStart, i).map(r => r.values);
-    const retUsLatest = returnsUs[i - 1].values;
+    // 論文: 共分散は Wt={t-L..t-1}、米国ショックは「直前に観測可能な米国 CC」＝当行 i（日付整列済み）
+    const retUsLatest = returnsUs[i].values;
 
     let weights;
 
@@ -294,8 +250,9 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       strategyRet += weights[j] * retNext[j];
     }
 
-    // 取引コスト適用
-    strategyRet = applyTransactionCosts(strategyRet, config.transactionCosts);
+    // 取引コスト（ターンオーバー基準。コスト 0 のときは論文の無摩擦と一致）
+    strategyRet = applyTransactionCosts(strategyRet, config.transactionCosts, prevWeights, weights);
+    prevWeights = weights;
 
     strategyReturns.push({
       date: returnsJpOc[i].date,
@@ -310,10 +267,11 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
 /**
  * モメンタム戦略実行
  */
-function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.3, transactionCosts) {
+function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4, transactionCosts) {
   const nJp = returnsJp[0].values.length;
   const strategyReturns = [];
   const dates = [];
+  let prevWeights = null;
 
   for (let i = window; i < returnsJpOc.length; i++) {
     const momentum = new Array(nJp).fill(0);
@@ -336,7 +294,8 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.3
       strategyRet += weights[j] * retNext[j];
     }
 
-    strategyRet = applyTransactionCosts(strategyRet, transactionCosts);
+    strategyRet = applyTransactionCosts(strategyRet, transactionCosts, prevWeights, weights);
+    prevWeights = weights;
 
     strategyReturns.push({
       date: returnsJpOc[i].date,
@@ -352,7 +311,7 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.3
 // ダブルソート
 // ============================================================================
 
-function buildDoubleSortPortfolio(momentumSignal, pcaSignal, quantile = 0.3) {
+function buildDoubleSortPortfolio(momentumSignal, pcaSignal, quantile = 0.4) {
   const n = momentumSignal.length;
   const q = Math.max(1, Math.floor(n * quantile));
 
@@ -429,9 +388,13 @@ async function main() {
     usData = loadLocalData(path.resolve(config.data.dataDir), US_ETF_TICKERS);
     jpData = loadLocalData(path.resolve(config.data.dataDir), JP_ETF_TICKERS);
   } else {
-    logger.info('Fetching market data from Yahoo (BACKTEST_DATA_MODE=yahoo)...');
-    usData = await fetchAllData(US_ETF_TICKERS, startDate, endDate);
-    jpData = await fetchAllData(JP_ETF_TICKERS, startDate, endDate);
+    logger.info(`Fetching market data (BACKTEST_DATA_MODE=${config.data.mode})...`);
+    const [usRes, jpRes] = await Promise.all([
+      fetchOhlcvDateRangeForTickers(US_ETF_TICKERS, startDate, endDate, config),
+      fetchOhlcvDateRangeForTickers(JP_ETF_TICKERS, startDate, endDate, config)
+    ]);
+    usData = usRes.byTicker;
+    jpData = jpRes.byTicker;
 
     logger.info('Saving data to CSV...');
     for (const t in usData) {

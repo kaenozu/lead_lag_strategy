@@ -84,7 +84,7 @@ async function runTests() {
         await testApi('/api/signal', {
             windowLength: 30,
             lambdaReg: 0.9,
-            quantile: 0.3
+            quantile: 0.4
         });
 
         // テスト 3: バックテスト（短縮版）
@@ -92,7 +92,7 @@ async function runTests() {
         await testApi('/api/backtest', {
             windowLength: 30,
             lambdaReg: 0.9,
-            quantile: 0.3
+            quantile: 0.4
         });
 
         console.log('\n' + '='.repeat(50));

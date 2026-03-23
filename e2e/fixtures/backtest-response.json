@@ -1,0 +1,51 @@
+{
+  "config": {
+    "windowLength": 60,
+    "nFactors": 3,
+    "lambdaReg": 0.9,
+    "quantile": 0.4,
+    "transactionCosts": { "slippage": 0, "commission": 0 },
+    "chartCalendarDays": 2000,
+    "rollingReportWindow": 252
+  },
+  "costsNote": "モック（E2E）",
+  "results": [{ "date": "2026-01-02", "return": 0.001 }],
+  "metrics": {
+    "AR": 12.34,
+    "RISK": 10.5,
+    "RR": 1.17,
+    "MDD": -8.5,
+    "Total": 45.6,
+    "Days": 500,
+    "costsApplied": false,
+    "equalWeightJP": {
+      "AR": 2.1,
+      "RISK": 9.0,
+      "RR": 0.23,
+      "MDD": -15.0,
+      "Total": 5.0,
+      "Days": 500
+    },
+    "momentum": {
+      "AR": 1.0,
+      "RISK": 11.0,
+      "RR": 0.09,
+      "MDD": -20.0,
+      "Total": -2.0,
+      "Days": 500
+    }
+  },
+  "yearlyStrategy": {
+    "2024": { "AR": 10, "RISK": 9, "RR": 1.1, "MDD": -7, "Total": 12, "Days": 240 }
+  },
+  "rollingSummary": {
+    "window": 252,
+    "count": 5,
+    "lastDate": "2026-01-02",
+    "lastRR": 0.88,
+    "minRR": 0.2,
+    "maxRR": 1.5,
+    "tail": []
+  },
+  "disclosure": { "short": "test", "lines": ["a"] }
+}
