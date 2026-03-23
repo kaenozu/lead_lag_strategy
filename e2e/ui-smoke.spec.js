@@ -7,6 +7,9 @@ const path = require('path');
 const signalFixture = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'signal-response.json'), 'utf8')
 );
+const backtestFixture = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures', 'backtest-response.json'), 'utf8')
+);
 
 const artifactsDir = path.join(__dirname, '..', 'e2e-artifacts');
 
@@ -15,7 +18,7 @@ test.describe('本番 UI（静的 + API モック）', () => {
     fs.mkdirSync(artifactsDir, { recursive: true });
   });
 
-  test('本日の売買候補が表示されスクリーンショットを保存する', async ({ page }) => {
+  test('今日の候補一覧が表示されスクリーンショットを保存する', async ({ page }) => {
     await page.route('**/api/config', async (route) => {
       await route.fulfill({
         status: 200,
@@ -41,14 +44,26 @@ test.describe('本番 UI（静的 + API モック）', () => {
       });
     });
 
+    await page.route('**/api/backtest', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(backtestFixture)
+      });
+    });
+
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: /本日の売買候補/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /今日の候補一覧/ })).toBeVisible();
 
     await expect(page.locator('#todaySummary')).toBeVisible();
-    await expect(page.locator('#todaySummary')).toContainText('今日買い候補');
+    await expect(page.locator('#todaySummary')).toContainText('買い候補（強いと出ている業種のファンド）');
     await expect(page.locator('#todaySummary')).toContainText('1617.T');
-    await expect(page.locator('#todaySummary')).toContainText('今日売り候補');
+    await expect(page.locator('#todaySummary')).toContainText('売り候補（弱いと出ている業種');
     await expect(page.locator('#todaySummary')).toContainText('1624.T');
 
     await expect(page.locator('.signal-table')).toBeVisible();

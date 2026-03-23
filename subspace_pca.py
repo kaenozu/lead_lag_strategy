@@ -17,7 +17,7 @@ class SubspacePCAConfig:
     window_length: int = 60  # 推定ウィンドウ長 L
     n_factors: int = 3  # 因子数 K
     lambda_reg: float = 0.9  # 正則化パラメータ λ
-    quantile: float = 0.3  # 分位点 q
+    quantile: float = 0.4  # 分位点 q（Node lib/config と揃える）
     # 結合リターン行列の列順と一致させるキー（None のときは dict の挿入順・非推奨）
     ordered_sector_keys: Optional[List[str]] = None
     # 推定窓内の日本側リターン: "cc" または "oc"（P&L は従来どおり OC）
@@ -234,7 +234,7 @@ class LeadLagSignal:
 
 def build_portfolio(
     signal: np.ndarray,
-    quantile: float = 0.3
+    quantile: float = 0.4
 ) -> np.ndarray:
     """
     ロングショートポートフォリオの構築
@@ -359,7 +359,8 @@ def backtest(
         
         ret_us_window = returns_us.iloc[window_start:window_end].values
         ret_jp_window = ret_jp_for_window.iloc[window_start:window_end].values
-        ret_us_latest = returns_us.iloc[window_end - 1].values
+        # 推定窓は t-L..t-1、当日の米国ショックは行 window_end（JP 日 t と整列した米国 CC）
+        ret_us_latest = returns_us.iloc[window_end].values
         
         # シグナルの計算
         signal_generator = LeadLagSignal(config)

@@ -23,7 +23,7 @@ const BASE_CONFIG = {
     windowLength: 40,
     nFactors: 3,
     lambdaReg: 0.95,
-    quantile: 0.3,
+    quantile: 0.4,
     warmupPeriod: 40,
 };
 
@@ -52,7 +52,7 @@ const PARAM_GRID = {
 // ポートフォリオ構築（リスク管理付き）
 // ============================================================================
 
-function buildPortfolio(signal, quantile = 0.3, riskConfig = null, currentVolatility = 0.10) {
+function buildPortfolio(signal, quantile = 0.4, riskConfig = null, currentVolatility = 0.10) {
     const n = signal.length;
     const q = Math.max(1, Math.floor(n * quantile));
     const indexed = signal.map((val, idx) => ({ val, idx })).sort((a, b) => a.val - b.val);
@@ -205,7 +205,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
         const start = i - config.windowLength;
         const retUsWin = retUs.slice(start, i).map(r => r.values);
         const retJpWin = retJp.slice(start, i).map(r => r.values);
-        const retUsLatest = retUs[i - 1].values;
+        const retUsLatest = retUs[i].values;
 
         const signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
 

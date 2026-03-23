@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.local
 
+# Web 画面で保存したデータ取得モード（リポジトリに含めない）
+config/runtime-data-source.json
+
 # ログファイル
 *.log
 server.log
@@ -16,6 +19,7 @@ results/*.json
 
 # データファイル（必要に応じて）
 data/*.csv
+data/cache/
 !data/.gitkeep
 
 # OS ファイル

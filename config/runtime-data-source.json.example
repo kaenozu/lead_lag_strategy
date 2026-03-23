@@ -1,0 +1,4 @@
+{
+  "mode": "jquants",
+  "usOhlcvProvider": "alphavantage"
+}

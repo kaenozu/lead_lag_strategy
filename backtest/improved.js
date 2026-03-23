@@ -21,7 +21,7 @@ const BASE_CONFIG = {
     windowLength: 60,
     nFactors: 3,
     lambdaReg: 0.9,
-    quantile: 0.3,
+    quantile: 0.4,
     warmupPeriod: 60,
 };
 
@@ -142,7 +142,7 @@ function runStrategy(retUs, retJp, retJpOc, config, labels, CFull, useMomentum =
         } else {
             const retUsWin = retUs.slice(start, i).map(r => r.values);
             const retJpWin = retJp.slice(start, i).map(r => r.values);
-            const retUsLatest = retUs[i - 1].values;
+            const retUsLatest = retUs[i].values;
             signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         }
         
@@ -165,8 +165,8 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         const start = i - config.windowLength;
         const retUsWin = retUs.slice(start, i).map(r => r.values);
         const retJpWin = retJp.slice(start, i).map(r => r.values);
-        const retUsLatest = retUs[i - 1].values;
-        
+        const retUsLatest = retUs[i].values;
+
         const signalPca = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         
         const signalMom = new Array(nJp).fill(0);

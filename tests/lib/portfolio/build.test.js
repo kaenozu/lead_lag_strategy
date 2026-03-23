@@ -32,7 +32,7 @@ describe('lib/portfolio/build', () => {
       expect(shortWeight).toBeCloseTo(-1);
     });
 
-    test('デフォルトquantileは0.3', () => {
+    test('デフォルトquantileは0.4', () => {
       const signal = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
       const weights = buildPortfolio(signal);
 
@@ -43,34 +43,33 @@ describe('lib/portfolio/build', () => {
       expect(shortWeight).toBeCloseTo(-1);
     });
 
-    test('空シグナルでエラーをスロー', () => {
-      expect(() => buildPortfolio([], 0.3)).toThrow('Invalid signal');
+    test('空シグナルは空配列を返す', () => {
+      expect(buildPortfolio([], 0.3)).toEqual([]);
     });
 
-    test('nullシグナルでエラーをスロー', () => {
-      expect(() => buildPortfolio(null, 0.3)).toThrow('Invalid signal');
+    test('nullシグナルは空配列を返す', () => {
+      expect(buildPortfolio(null, 0.3)).toEqual([]);
     });
 
-    test('undefinedシグナルでエラーをスロー', () => {
-      expect(() => buildPortfolio(undefined, 0.3)).toThrow('Invalid signal');
+    test('undefinedシグナルは空配列を返す', () => {
+      expect(buildPortfolio(undefined, 0.3)).toEqual([]);
     });
 
-    test('quantile=0でエラーをスロー', () => {
-      expect(() => buildPortfolio([1, 2, 3], 0)).toThrow('Invalid quantile');
+    test('無効なquantileはデフォルト0.4にフォールバック', () => {
+      const w0 = buildPortfolio([1, 2, 3, 4, 5], 0);
+      const wHigh = buildPortfolio([1, 2, 3, 4, 5], 0.51);
+      const wNeg = buildPortfolio([1, 2, 3, 4, 5], -0.1);
+      expect(w0.length).toBe(5);
+      expect(wHigh.length).toBe(5);
+      expect(wNeg.length).toBe(5);
+      const long0 = w0.filter(x => x > 0).reduce((a, b) => a + b, 0);
+      expect(long0).toBeCloseTo(1);
     });
 
     test('quantile=0.5は有効', () => {
       const signal = [1, 2, 3];
       const weights = buildPortfolio(signal, 0.5);
       expect(weights.length).toBe(3);
-    });
-
-    test('quantile=0.51でエラーをスロー', () => {
-      expect(() => buildPortfolio([1, 2, 3], 0.51)).toThrow('Invalid quantile');
-    });
-
-    test('quantile<0でエラーをスロー', () => {
-      expect(() => buildPortfolio([1, 2, 3], -0.1)).toThrow('Invalid quantile');
     });
 
     test('タイブレーク時にインデックス順でソート', () => {
@@ -81,12 +80,12 @@ describe('lib/portfolio/build', () => {
       expect(positiveIndices.length).toBeGreaterThan(0);
     });
 
-    test('単一要素でquantile適用', () => {
-      expect(() => buildPortfolio([1], 0.3)).toThrow('Invalid signal: all values are identical');
+    test('単一要素は同一値扱いでニュートラル', () => {
+      expect(buildPortfolio([1], 0.3)).toEqual([0]);
     });
 
-    test('全員が同じシグナル値の場合', () => {
-      expect(() => buildPortfolio([1, 1, 1, 1], 0.25)).toThrow('Invalid signal: all values are identical');
+    test('全員が同じシグナル値の場合はニュートラル', () => {
+      expect(buildPortfolio([1, 1, 1, 1], 0.25)).toEqual([0, 0, 0, 0]);
     });
 
     test('負の値を含むシグナル', () => {
@@ -110,7 +109,7 @@ describe('lib/portfolio/build', () => {
       expect(weights.length).toBe(5);
     });
 
-    test('デフォルトquantileは0.3', () => {
+    test('デフォルトquantileは0.4', () => {
       const momSignal = [0.1, 0.2, 0.3, 0.4, 0.5];
       const pcaSignal = [0.5, 0.4, 0.3, 0.2, 0.1];
       const weights = buildDoubleSortPortfolio(momSignal, pcaSignal);
@@ -214,40 +213,14 @@ describe('lib/portfolio/build', () => {
       expect(() => buildEqualWeightPortfolio(3, [0, 1], undefined)).toThrow();
     });
   });
-  describe('エッジケース（buildPortfolio）', () => {
-    test('空のシグナルは空の配列を返す', () => {
-      const weights = buildPortfolio([], 0.3);
-      expect(weights).toEqual([]);
-    });
 
-    test('null シグナルは空の配列を返す', () => {
-      const weights = buildPortfolio(null, 0.3);
-      expect(weights).toEqual([]);
-    });
-
-    test('全シグナルが同一の場合はニュートラル（ゼロウェイト）', () => {
-      const weights = buildPortfolio([1, 1, 1, 1], 0.3);
-      expect(weights).toEqual([0, 0, 0, 0]);
-    });
-
+  describe('buildPortfolio 追加エッジケース', () => {
     test('全シグナルがゼロの場合はニュートラル', () => {
-      const weights = buildPortfolio([0, 0, 0, 0], 0.3);
-      expect(weights).toEqual([0, 0, 0, 0]);
+      expect(buildPortfolio([0, 0, 0, 0], 0.3)).toEqual([0, 0, 0, 0]);
     });
 
     test('極小値のシグナルはニュートラル', () => {
-      const weights = buildPortfolio([1e-12, 2e-12, 1e-12], 0.3);
-      expect(weights).toEqual([0, 0, 0]);
-    });
-
-    test('無効な quantile はデフォルト 0.3 を使用', () => {
-      const signal = [0.1, 0.2, 0.3, 0.4, 0.5];
-      const weights1 = buildPortfolio(signal, -0.1);
-      const weights2 = buildPortfolio(signal, 0.6);
-      
-      // デフォルト 0.3 が使用される
-      expect(weights1.length).toBe(5);
-      expect(weights2.length).toBe(5);
+      expect(buildPortfolio([1e-12, 2e-12, 1e-12], 0.3)).toEqual([0, 0, 0]);
     });
   });
 });
