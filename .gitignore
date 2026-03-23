@@ -35,6 +35,14 @@ build/
 # テストカバレッジ
 coverage/
 
+# ローカルキャッシュ/一時生成物
+.eslintcache
+.cache/
+.nyc_output/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Playwright / UI 検証スクリーンショット（.gitkeep は残す）
 e2e-artifacts/*
 !e2e-artifacts/.gitkeep
