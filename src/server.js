@@ -51,6 +51,26 @@ const app = express();
 // セキュリティ設定
 // ============================================
 
+// API キー認証（環境変数 API_KEY が設定されている場合のみ有効）
+const API_KEY = process.env.API_KEY;
+
+/**
+ * API キー認証ミドルウェア
+ * API_KEY が設定されている場合、X-API-Key ヘッダーを検証
+ */
+function apiKeyAuth(req, res, next) {
+  if (!API_KEY) {
+    // API_KEY が未設定の場合は認証をスキップ（開発モード）
+    return next();
+  }
+  const key = req.headers['x-api-key'];
+  if (!key || key !== API_KEY) {
+    logger.warn('Unauthorized API access attempt', { ip: req.ip, path: req.path });
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+  next();
+}
+
 // レート制限：API エンドポイントごと
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 分
@@ -79,9 +99,11 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' })); // リクエストサイズ制限
 app.use(express.static('public'));
 
-// API エンドポイントにレート制限を適用
+// API エンドポイントに認証とレート制限を適用
 app.use('/api/', apiLimiter);
 app.use('/api/backtest', backtestLimiter);
+app.use('/api/backtest', apiKeyAuth);
+app.use('/api/signal', apiKeyAuth);
 
 // 設定の検証
 const configErrors = validate();
@@ -104,43 +126,59 @@ function validateBacktestParams(body) {
   const errors = [];
   const params = {};
 
-  // windowLength
+  // windowLength - 型チェック強化
   if (body.windowLength !== undefined) {
-    const val = parseInt(body.windowLength, 10);
-    if (isNaN(val) || val < 10 || val > 500) {
-      errors.push('windowLength must be between 10 and 500');
+    if (typeof body.windowLength !== 'string' && typeof body.windowLength !== 'number') {
+      errors.push('windowLength must be a number or string');
     } else {
-      params.windowLength = val;
+      const val = parseInt(String(body.windowLength).trim(), 10);
+      if (isNaN(val) || val < 10 || val > 500) {
+        errors.push('windowLength must be between 10 and 500');
+      } else {
+        params.windowLength = val;
+      }
     }
   }
 
-  // lambdaReg
+  // lambdaReg - 型チェック強化
   if (body.lambdaReg !== undefined) {
-    const val = parseFloat(body.lambdaReg);
-    if (isNaN(val) || val < 0 || val > 1) {
-      errors.push('lambdaReg must be between 0 and 1');
+    if (typeof body.lambdaReg !== 'string' && typeof body.lambdaReg !== 'number') {
+      errors.push('lambdaReg must be a number or string');
     } else {
-      params.lambdaReg = val;
+      const val = parseFloat(String(body.lambdaReg).trim());
+      if (isNaN(val) || val < 0 || val > 1) {
+        errors.push('lambdaReg must be between 0 and 1');
+      } else {
+        params.lambdaReg = val;
+      }
     }
   }
 
-  // quantile
+  // quantile - 型チェック強化
   if (body.quantile !== undefined) {
-    const val = parseFloat(body.quantile);
-    if (isNaN(val) || val <= 0 || val > 0.5) {
-      errors.push('quantile must be between 0 and 0.5');
+    if (typeof body.quantile !== 'string' && typeof body.quantile !== 'number') {
+      errors.push('quantile must be a number or string');
     } else {
-      params.quantile = val;
+      const val = parseFloat(String(body.quantile).trim());
+      if (isNaN(val) || val <= 0 || val > 0.5) {
+        errors.push('quantile must be between 0 and 0.5');
+      } else {
+        params.quantile = val;
+      }
     }
   }
 
-  // nFactors
+  // nFactors - 型チェック強化
   if (body.nFactors !== undefined) {
-    const val = parseInt(body.nFactors, 10);
-    if (isNaN(val) || val < 1 || val > 10) {
-      errors.push('nFactors must be between 1 and 10');
+    if (typeof body.nFactors !== 'string' && typeof body.nFactors !== 'number') {
+      errors.push('nFactors must be a number or string');
     } else {
-      params.nFactors = val;
+      const val = parseInt(String(body.nFactors).trim(), 10);
+      if (isNaN(val) || val < 1 || val > 10) {
+        errors.push('nFactors must be between 1 and 10');
+      } else {
+        params.nFactors = val;
+      }
     }
   }
 
@@ -411,10 +449,17 @@ app.post('/api/backtest', async (req, res) => {
   } catch (error) {
     logger.error('Backtest failed', {
       error: error.message,
-      path: '/api/backtest'
+      stack: error.stack,
+      path: '/api/backtest',
+      timestamp: new Date().toISOString()
     });
+    
+    // エラーコードに応じた終了コードの決定（プロセス終了時用）
+    const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+    
     res.status(500).json({
-      error: config.server.isDevelopment ? error.message : 'Backtest failed'
+      error: config.server.isDevelopment ? error.message : 'Backtest failed',
+      code: config.server.isDevelopment ? error.code : undefined
     });
   }
 });

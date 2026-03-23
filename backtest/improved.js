@@ -395,7 +395,12 @@ async function main() {
     }
 }
 
-main().catch(e => {
-    console.error('エラー:', e);
-    process.exit(1);
-});
+if (require.main === module) {
+    const { createLogger } = require('../lib/logger');
+    const logger = createLogger('BacktestImproved');
+    
+    main().catch(error => {
+        logger.error('Backtest failed', { error: error.message, stack: error.stack });
+        process.exit(1);
+    });
+}
