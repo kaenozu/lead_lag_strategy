@@ -45,11 +45,11 @@ const {
 const {
   validateBacktestParams,
   validateConfigUpdateParams
-} = require('./modules/paramValidation');
+} = require('./server/modules/paramValidation');
 const {
   getUiConfigPayload,
   updateBacktestConfig
-} = require('./modules/configStore');
+} = require('./server/modules/configStore');
 
 const logger = createLogger('Server');
 
