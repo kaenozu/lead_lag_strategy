@@ -1156,12 +1156,21 @@
         }
 
         function isAutoSignalWindowJst() {
-            const nowJst = new Date(
-                new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
-            );
-            const day = nowJst.getDay(); // 0:Sun ... 6:Sat
-            if (day === 0 || day === 6) return false;
-            const minutes = nowJst.getHours() * 60 + nowJst.getMinutes();
+            // JSTの時刻要素を直接取り出し、文字列→Date再パースの環境依存を避ける。
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Tokyo',
+                weekday: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).formatToParts(new Date());
+            const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+            const weekday = partMap.weekday; // Sun ... Sat
+            if (weekday === 'Sun' || weekday === 'Sat') return false;
+            const hour = parseInt(partMap.hour, 10);
+            const minute = parseInt(partMap.minute, 10);
+            if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
+            const minutes = hour * 60 + minute;
             return minutes >= (8 * 60 + 45) && minutes <= (8 * 60 + 55);
         }
 

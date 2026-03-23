@@ -121,7 +121,6 @@ describe('paper parity', () => {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('skip Python check:', e.message);
-      expect(true).toBe(true);
       return;
     }
 

@@ -57,6 +57,8 @@ describe('lib/portfolio/metrics', () => {
       const metrics = computePerformanceMetrics(returns);
       expect(metrics.AR).toBe(0.01 * 252);
       expect(metrics.Cumulative).toBe(1.01);
+      expect(metrics.RISK).toBe(0);
+      expect(metrics.RR).toBe(0);
     });
 
     test('負のリターンで計算', () => {
