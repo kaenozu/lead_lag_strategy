@@ -4,7 +4,7 @@
 
 'use strict';
 
-const { config, validate, display } = require('../../lib/config');
+const { config, validate, display, getDataSourcesForUi } = require('../../lib/config');
 
 describe('lib/config', () => {
   describe('config', () => {
@@ -56,8 +56,26 @@ describe('lib/config', () => {
     });
 
     test('データモード・窓リターン型', () => {
-      expect(['yahoo', 'csv']).toContain(config.data.mode);
+      expect(['yahoo', 'csv', 'jquants']).toContain(config.data.mode);
+      expect(['yahoo', 'alphavantage']).toContain(config.data.usOhlcvProvider);
       expect(['cc', 'oc']).toContain(config.backtest.jpWindowReturn);
+    });
+
+    test('getDataSourcesForUi は保存設定＋米日の実行時経路を返す', () => {
+      const ds = getDataSourcesForUi();
+      expect(ds.lines).toHaveLength(3);
+      expect(ds.lines[0]).toMatch(/【画面で保存している設定】/);
+      expect(ds.lines[1]).toMatch(/米国セクター ETF・実行時の取得:/);
+      expect(ds.lines[2]).toMatch(/日本セクター ETF・実行時の取得:/);
+      expect(ds.selectionSummary).toBe(`日本=${config.data.mode} · 米国=${config.data.usOhlcvProvider}`);
+      expect(typeof ds.effectiveUs).toBe('string');
+      expect(typeof ds.effectiveJp).toBe('string');
+      expect(ds.credentialDetection).toEqual({
+        alphaVantage: expect.any(Boolean),
+        jquants: expect.any(Boolean)
+      });
+      expect(ds.backtestDataMode).toBe(config.data.mode);
+      expect(ds.usOhlcvProvider).toBe(config.data.usOhlcvProvider);
     });
   });
 

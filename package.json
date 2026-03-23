@@ -15,17 +15,20 @@
     "analysis": "node backtest/analysis.js",
     "doctor": "node scripts/doctor.js",
     "doctor:ci": "node scripts/doctor.js --light",
+    "workflow": "node scripts/workflow.js",
+    "workflow:full": "node scripts/workflow.js --doctor-full --with-backtest",
     "paper": "node scripts/paper_trading.js",
     "paper-trade": "node scripts/paper_trading.js",
     "backtest": "node backtest/real.js",
     "backtest:basic": "node backtest/basic.js",
     "backtest:improved": "node backtest/improved.js",
     "backtest:risk": "node backtest/risk_managed.js",
-    "test": "node scripts/test_unit.js && node --check src/server.js && node --check src/generate_signal.js && node --check backtest/improved.js && node --check backtest/real.js && node --check backtest/analysis.js && node --check scripts/doctor.js && node --check scripts/paper_trading.js && npm run doctor:ci && jest --coverage",
+    "test": "node scripts/test_unit.js && node --check src/server.js && node --check src/generate_signal.js && node --check backtest/improved.js && node --check backtest/real.js && node --check backtest/analysis.js && node --check scripts/doctor.js && node --check scripts/paper_trading.js && node --check scripts/workflow.js && node --check lib/data/jquants.js && node --check lib/data/alphavantage.js && node --check lib/data/sourceRecovery.js && npm run doctor:ci && jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "test:e2e": "playwright test",
+    "test:e2e:monkey": "playwright test e2e/ui-monkey.spec.js",
     "test:e2e:ui": "playwright test --ui"
   },
   "keywords": [
@@ -42,19 +45,19 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "axios": "^1.13.6",
-    "cors": "^2.8.6",
-    "dotenv": "^16.4.5",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
-    "winston": "^3.17.0",
-    "yahoo-finance2": "^3.13.2"
+    "axios": "1.13.6",
+    "cors": "2.8.6",
+    "dotenv": "16.4.5",
+    "express": "5.2.1",
+    "express-rate-limit": "8.3.1",
+    "winston": "3.17.0",
+    "yahoo-finance2": "3.13.2"
   },
   "devDependencies": {
-    "@eslint/js": "^9.17.0",
-    "@playwright/test": "^1.51.0",
-    "eslint": "^9.17.0",
-    "jest": "^29.7.0",
-    "supertest": "^7.0.0"
+    "@eslint/js": "9.17.0",
+    "@playwright/test": "1.51.0",
+    "eslint": "9.17.0",
+    "jest": "29.7.0",
+    "supertest": "7.0.0"
   }
 }

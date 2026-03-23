@@ -12,7 +12,7 @@
 
 'use strict';
 
-const { runBacktest, runMomentumStrategy } = require('../backtest_real');
+const { runBacktest, runMomentumStrategy } = require('../backtest/real');
 
 // ============================================================================
 // テスト用データ生成ヘルパー

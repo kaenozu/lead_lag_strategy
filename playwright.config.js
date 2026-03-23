@@ -16,7 +16,8 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure'
   },
   webServer: {
-    command: 'node server.js',
+    command: 'node src/server.js',
+    cwd: __dirname,
     url: 'http://127.0.0.1:3000/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 120000

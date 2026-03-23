@@ -19,6 +19,11 @@ const {
   buildReturnMatricesFromOhlcv
 } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
+const {
+  isCsvDataMode,
+  isAlreadyFullYahooPath,
+  configForYahooDataRecovery
+} = require('../lib/data/sourceRecovery');
 
 const logger = createLogger('SignalGenerator');
 
@@ -75,16 +80,17 @@ async function main() {
 
   logger.info('Signal generation started', options);
 
-  const winDays = options.windowLength + 50;
+  // Web API（POST /api/signal）と同じカレンダー窓
+  const winDays = Math.max(280, options.windowLength + 160);
   console.log('\n📡 Loading market data (parallel per region)...');
 
-  const [usRes, jpRes] = await Promise.all([
+  let [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
     fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, config)
   ]);
 
-  const usData = usRes.byTicker;
-  const jpData = jpRes.byTicker;
+  let usData = usRes.byTicker;
+  let jpData = jpRes.byTicker;
   for (const [t, err] of Object.entries({ ...usRes.errors, ...jpRes.errors })) {
     logger.error(`Data load failed: ${t}`, { error: err });
   }
@@ -96,7 +102,7 @@ async function main() {
     console.log(`  ${ticker}... ${jpData[ticker].length} days`);
   }
 
-  const { retUs, retJp } = buildReturnMatricesFromOhlcv(
+  let { retUs, retJp } = buildReturnMatricesFromOhlcv(
     usData,
     jpData,
     US_ETF_TICKERS,
@@ -106,10 +112,61 @@ async function main() {
 
   console.log(`\n📊 Data prepared: ${retUs.length} trading days`);
 
+  let recoveryTried = false;
+  if (
+    retUs.length < options.windowLength &&
+    !isCsvDataMode(config) &&
+    !isAlreadyFullYahooPath(config)
+  ) {
+    recoveryTried = true;
+    logger.warn('Signal CLI: 営業日不足 → Yahoo 経路で自動再取得');
+    console.log('\n📡 Retrying with Yahoo (US + JP)...');
+    const recoverCfg = configForYahooDataRecovery(config);
+    [usRes, jpRes] = await Promise.all([
+      fetchOhlcvForTickers(US_ETF_TICKERS, winDays, recoverCfg),
+      fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, recoverCfg)
+    ]);
+    usData = usRes.byTicker;
+    jpData = jpRes.byTicker;
+    for (const [t, err] of Object.entries({ ...usRes.errors, ...jpRes.errors })) {
+      logger.error(`Data load failed (recovery): ${t}`, { error: err });
+    }
+    for (const ticker of US_ETF_TICKERS) {
+      console.log(`  ${ticker}... ${usData[ticker].length} days`);
+    }
+    for (const ticker of JP_ETF_TICKERS) {
+      console.log(`  ${ticker}... ${jpData[ticker].length} days`);
+    }
+    ({ retUs, retJp } = buildReturnMatricesFromOhlcv(
+      usData,
+      jpData,
+      US_ETF_TICKERS,
+      JP_ETF_TICKERS,
+      config.backtest.jpWindowReturn
+    ));
+    console.log(`\n📊 Data prepared after recovery: ${retUs.length} trading days`);
+  }
+
   if (retUs.length < options.windowLength) {
     logger.error('Insufficient data');
-    console.error('Error: Insufficient data for window length');
+    const usErr = Object.keys(usRes.errors || {}).length;
+    const jpErr = Object.keys(jpRes.errors || {}).length;
+    const retryHint = recoveryTried
+      ? ' Yahoo への自動再取得後も不足しています。'
+      : '';
+    console.error(
+      `Error: Insufficient aligned trading days (${retUs.length} < window ${options.windowLength}). ` +
+        `Calendar fetch window ≈ ${winDays} days. Tickers with fetch errors — US: ${usErr}, JP: ${jpErr}.` +
+        retryHint +
+        ' J-Quants の場合は JQUANTS_REFRESH_TOKEN を更新するか BACKTEST_DATA_MODE=yahoo を試してください。'
+    );
     process.exit(1);
+  }
+
+  if (recoveryTried) {
+    console.log(
+      '\nℹ️ 初回取得で営業日が足りなかったため、自動で Yahoo 経路に切り替えて再取得しました。'
+    );
   }
 
   const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);

@@ -93,8 +93,44 @@ SECTOR_LABELS = {
 }
 
 
+def paper_align_us_jp(
+    returns_us: pd.DataFrame,
+    returns_jp: pd.DataFrame,
+    returns_jp_oc: pd.DataFrame,
+) -> tuple:
+    """
+    各 JP 営業日について、時系列で直前の米国営業日の CC を 1 行に結合（Node lib/data/alignment.js と同趣旨）。
+    """
+    rows_us = []
+    rows_jp = []
+    rows_oc = []
+    idx_out = []
+    for jp_d in returns_jp.index.sort_values():
+        us_before = returns_us.index[returns_us.index < jp_d]
+        if len(us_before) == 0:
+            continue
+        us_d = us_before.sort_values()[-1]
+        try:
+            u = returns_us.loc[us_d]
+            j = returns_jp.loc[jp_d]
+            jo = returns_jp_oc.loc[jp_d]
+        except (KeyError, TypeError):
+            continue
+        if u.isna().any() or j.isna().any() or jo.isna().any():
+            continue
+        rows_us.append(u)
+        rows_jp.append(j)
+        rows_jp_oc.append(jo)
+        idx_out.append(jp_d)
+    return (
+        pd.DataFrame(rows_us, index=idx_out),
+        pd.DataFrame(rows_jp, index=idx_out),
+        pd.DataFrame(rows_jp_oc, index=idx_out),
+    )
+
+
 def download_data(
-    start_date: str = '2015-01-01',
+    start_date: str = '2010-01-01',
     end_date: str = '2025-12-31'
 ) -> tuple:
     """
@@ -156,19 +192,16 @@ def download_data(
         returns_jp_oc[name] = ret_oc
     returns_jp_oc = pd.DataFrame(returns_jp_oc)
     
-    # 共通の取引日に揃える
-    common_dates = returns_us.index.intersection(returns_jp.index)
-    common_dates = common_dates.intersection(returns_jp_oc.index)
-    
-    returns_us = returns_us.loc[common_dates]
-    returns_jp = returns_jp.loc[common_dates]
-    returns_jp_oc = returns_jp_oc.loc[common_dates]
-    
-    # 欠損値の処理（前方充填）
+    # 欠損の軽い補完後、JP 日基準で「直前米国営業日」と整列（単純カレンダー交差は使わない）
     returns_us = returns_us.ffill().bfill()
     returns_jp = returns_jp.ffill().bfill()
     returns_jp_oc = returns_jp_oc.ffill().bfill()
-    
+
+    returns_us, returns_jp, returns_jp_oc = paper_align_us_jp(
+        returns_us, returns_jp, returns_jp_oc
+    )
+
+    common_dates = returns_jp.index
     print(f"データ期間：{common_dates[0]} ~ {common_dates[-1]}")
     print(f"米国セクター数：{returns_us.shape[1]}")
     print(f"日本セクター数：{returns_jp.shape[1]}")
@@ -201,7 +234,7 @@ def momentum_strategy(
     returns_jp: pd.DataFrame,
     returns_jp_oc: pd.DataFrame,
     window: int = 60,
-    quantile: float = 0.3
+    quantile: float = 0.4
 ) -> pd.DataFrame:
     """
     単純モメンタム戦略（ベースライン）
@@ -284,8 +317,8 @@ def double_sort_strategy(
         
         ret_us_window = returns_us.iloc[window_start:window_end].values
         ret_jp_window = returns_jp.iloc[window_start:window_end].values
-        ret_us_latest = returns_us.iloc[window_end - 1].values
-        
+        ret_us_latest = returns_us.iloc[window_end].values
+
         # PCA SUB シグナル
         signal_generator = LeadLagSignal(config)
         signal_pca = signal_generator.compute_signal(
@@ -354,7 +387,7 @@ def run_backtest():
         window_length=60,
         n_factors=3,
         lambda_reg=0.9,
-        quantile=0.3
+        quantile=0.4
     )
     
     # ========================================================================

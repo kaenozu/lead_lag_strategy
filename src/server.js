@@ -8,9 +8,16 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 // ライブラリ
 const { createLogger } = require('../lib/logger');
-const { config, validate } = require('../lib/config');
+const {
+  config,
+  validate,
+  getDataSourcesForUi,
+  applyDataSourceSettings,
+  getDataSourceUpdateErrors
+} = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
@@ -28,6 +35,13 @@ const {
   buildReturnMatricesFromOhlcv
 } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
+const { riskPayload } = require('../lib/disclosure');
+const { summarizeSignalSourcePaths, buildOpsDecision } = require('../lib/opsDecision');
+const {
+  isCsvDataMode,
+  isAlreadyFullYahooPath,
+  configForYahooDataRecovery
+} = require('../lib/data/sourceRecovery');
 
 const logger = createLogger('Server');
 
@@ -37,6 +51,26 @@ const app = express();
 // セキュリティ設定
 // ============================================
 
+// API キー認証（環境変数 API_KEY が設定されている場合のみ有効）
+const API_KEY = process.env.API_KEY;
+
+/**
+ * API キー認証ミドルウェア
+ * API_KEY が設定されている場合、X-API-Key ヘッダーを検証
+ */
+function apiKeyAuth(req, res, next) {
+  if (!API_KEY) {
+    // API_KEY が未設定の場合は認証をスキップ（開発モード）
+    return next();
+  }
+  const key = req.headers['x-api-key'];
+  if (!key || key !== API_KEY) {
+    logger.warn('Unauthorized API access attempt', { ip: req.ip, path: req.path });
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+  next();
+}
+
 // レート制限：API エンドポイントごと
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 分
@@ -44,7 +78,7 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip
+  keyGenerator: (req) => ipKeyGenerator(req.ip)
 });
 
 //  stricter rate limit for backtest endpoint
@@ -53,7 +87,8 @@ const backtestLimiter = rateLimit({
   max: 10, // 5 分あたり最大 10 リクエスト
   message: { error: 'Backtest requests are rate-limited to 10 per 5 minutes' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip)
 });
 
 // ============================================
@@ -64,34 +99,11 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' })); // リクエストサイズ制限
 app.use(express.static('public'));
 
-// API エンドポイントにレート制限を適用
+// API エンドポイントに認証とレート制限を適用
 app.use('/api/', apiLimiter);
 app.use('/api/backtest', backtestLimiter);
-
-// ============================================
-// エラーハンドリング
-// ============================================
-
-// 404 エラー
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// 汎用エラーハンドラー（機密情報を除外）
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error', {
-    error: err.message,
-    path: req.path,
-    method: req.method
-  });
-
-  const isDev = config.server.isDevelopment;
-  res.status(500).json({
-    error: 'Internal server error',
-    message: isDev ? err.message : undefined,
-    ...(isDev && { stack: err.stack })
-  });
-});
+app.use('/api/backtest', apiKeyAuth);
+app.use('/api/signal', apiKeyAuth);
 
 // 設定の検証
 const configErrors = validate();
@@ -114,43 +126,59 @@ function validateBacktestParams(body) {
   const errors = [];
   const params = {};
 
-  // windowLength
+  // windowLength - 型チェック強化
   if (body.windowLength !== undefined) {
-    const val = parseInt(body.windowLength, 10);
-    if (isNaN(val) || val < 10 || val > 500) {
-      errors.push('windowLength must be between 10 and 500');
+    if (typeof body.windowLength !== 'string' && typeof body.windowLength !== 'number') {
+      errors.push('windowLength must be a number or string');
     } else {
-      params.windowLength = val;
+      const val = parseInt(String(body.windowLength).trim(), 10);
+      if (isNaN(val) || val < 10 || val > 500) {
+        errors.push('windowLength must be between 10 and 500');
+      } else {
+        params.windowLength = val;
+      }
     }
   }
 
-  // lambdaReg
+  // lambdaReg - 型チェック強化
   if (body.lambdaReg !== undefined) {
-    const val = parseFloat(body.lambdaReg);
-    if (isNaN(val) || val < 0 || val > 1) {
-      errors.push('lambdaReg must be between 0 and 1');
+    if (typeof body.lambdaReg !== 'string' && typeof body.lambdaReg !== 'number') {
+      errors.push('lambdaReg must be a number or string');
     } else {
-      params.lambdaReg = val;
+      const val = parseFloat(String(body.lambdaReg).trim());
+      if (isNaN(val) || val < 0 || val > 1) {
+        errors.push('lambdaReg must be between 0 and 1');
+      } else {
+        params.lambdaReg = val;
+      }
     }
   }
 
-  // quantile
+  // quantile - 型チェック強化
   if (body.quantile !== undefined) {
-    const val = parseFloat(body.quantile);
-    if (isNaN(val) || val <= 0 || val > 0.5) {
-      errors.push('quantile must be between 0 and 0.5');
+    if (typeof body.quantile !== 'string' && typeof body.quantile !== 'number') {
+      errors.push('quantile must be a number or string');
     } else {
-      params.quantile = val;
+      const val = parseFloat(String(body.quantile).trim());
+      if (isNaN(val) || val <= 0 || val > 0.5) {
+        errors.push('quantile must be between 0 and 0.5');
+      } else {
+        params.quantile = val;
+      }
     }
   }
 
-  // nFactors
+  // nFactors - 型チェック強化
   if (body.nFactors !== undefined) {
-    const val = parseInt(body.nFactors, 10);
-    if (isNaN(val) || val < 1 || val > 10) {
-      errors.push('nFactors must be between 1 and 10');
+    if (typeof body.nFactors !== 'string' && typeof body.nFactors !== 'number') {
+      errors.push('nFactors must be a number or string');
     } else {
-      params.nFactors = val;
+      const val = parseInt(String(body.nFactors).trim(), 10);
+      if (isNaN(val) || val < 1 || val > 10) {
+        errors.push('nFactors must be between 1 and 10');
+      } else {
+        params.nFactors = val;
+      }
     }
   }
 
@@ -197,14 +225,15 @@ app.post('/api/backtest', async (req, res) => {
       });
     }
 
+    const wl = validation.params.windowLength || config.backtest.windowLength;
     const backtestConfig = {
-      windowLength: validation.params.windowLength || config.backtest.windowLength,
+      windowLength: wl,
       nFactors: validation.params.nFactors || config.backtest.nFactors,
       lambdaReg: validation.params.lambdaReg !== undefined
         ? validation.params.lambdaReg
         : config.backtest.lambdaReg,
       quantile: validation.params.quantile || config.backtest.quantile,
-      warmupPeriod: validation.params.windowLength || config.backtest.warmupPeriod,
+      warmupPeriod: wl,
       orderedSectorKeys: config.pca.orderedSectorKeys
     };
 
@@ -218,12 +247,13 @@ app.post('/api/backtest', async (req, res) => {
     });
 
     logger.info('Fetching US/JP ETF data (parallel)');
-    const [usRes, jpRes] = await Promise.all([
+    const needDays = backtestConfig.warmupPeriod + 10;
+    let [usRes, jpRes] = await Promise.all([
       fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, config),
       fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, config)
     ]);
-    const usData = usRes.byTicker;
-    const jpData = jpRes.byTicker;
+    let usData = usRes.byTicker;
+    let jpData = jpRes.byTicker;
     for (const [ticker, err] of Object.entries(usRes.errors)) {
       logger.warn(`US data ${ticker}: ${err}`);
     }
@@ -231,7 +261,7 @@ app.post('/api/backtest', async (req, res) => {
       logger.warn(`JP data ${ticker}: ${err}`);
     }
 
-    const { retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
+    let { retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
       usData,
       jpData,
       US_ETF_TICKERS,
@@ -241,11 +271,51 @@ app.post('/api/backtest', async (req, res) => {
 
     logger.info(`Data loaded: ${dates.length} trading days`);
 
+    let dataRecoveryAttempted = false;
+    if (dates.length < needDays && !isCsvDataMode(config) && !isAlreadyFullYahooPath(config)) {
+      dataRecoveryAttempted = true;
+      logger.warn('Backtest: 揃った営業日が不足 → Yahoo 経路で自動再取得', {
+        alignedDays: dates.length,
+        needDays
+      });
+      const recoverCfg = configForYahooDataRecovery(config);
+      [usRes, jpRes] = await Promise.all([
+        fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, recoverCfg),
+        fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, recoverCfg)
+      ]);
+      usData = usRes.byTicker;
+      jpData = jpRes.byTicker;
+      for (const [ticker, err] of Object.entries(usRes.errors)) {
+        logger.warn(`US data (recovery) ${ticker}: ${err}`);
+      }
+      for (const [ticker, err] of Object.entries(jpRes.errors)) {
+        logger.warn(`JP data (recovery) ${ticker}: ${err}`);
+      }
+      ({ retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
+        usData,
+        jpData,
+        US_ETF_TICKERS,
+        JP_ETF_TICKERS,
+        config.backtest.jpWindowReturn
+      ));
+      logger.info(`Data loaded after recovery: ${dates.length} trading days`);
+    }
+
     // データ量チェック
-    if (dates.length < backtestConfig.warmupPeriod + 10) {
+    if (dates.length < needDays) {
+      const usErrN = Object.keys(usRes.errors || {}).length;
+      const jpErrN = Object.keys(jpRes.errors || {}).length;
+      const retrySuffix = dataRecoveryAttempted
+        ? ' サーバー側で Yahoo 経路への自動切替・再取得を試みましたが、まだ不足しています。'
+        : '';
       return res.json({
         error: 'データが不足しています',
-        metrics: { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0, Days: dates.length }
+        detail:
+          `揃った営業日が ${dates.length} 日（要 ${needDays} 日以上）。` +
+          `チャート取得は ${chartDays} カレンダー日。米国/日本でエラー記録のある銘柄: ${usErrN} / ${jpErrN}。` +
+          retrySuffix,
+        metrics: { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0, Days: dates.length },
+        disclosure: riskPayload()
       });
     }
 
@@ -259,6 +329,8 @@ app.post('/api/backtest', async (req, res) => {
     const results = [];
     const equalWeightSeries = [];
     const momentumSeries = [];
+    let prevWeights = null;
+    let prevMomWeights = null;
 
     // バックテストループ（参照のみ使用：不要なコピーを削除）
     for (let i = backtestConfig.warmupPeriod; i < retJpOc.length; i++) {
@@ -284,7 +356,8 @@ app.post('/api/backtest', async (req, res) => {
       for (let j = 0; j < weights.length; j++) {
         stratRet += weights[j] * retNext[j];
       }
-      stratRet = applyTransactionCosts(stratRet, costs);
+      stratRet = applyTransactionCosts(stratRet, costs, prevWeights, weights);
+      prevWeights = weights;
 
       results.push({
         date: retJpOc[i].date,
@@ -310,7 +383,8 @@ app.post('/api/backtest', async (req, res) => {
       for (let j = 0; j < nJp; j++) {
         momRet += wMom[j] * retNext[j];
       }
-      momRet = applyTransactionCosts(momRet, costs);
+      momRet = applyTransactionCosts(momRet, costs, prevMomWeights, wMom);
+      prevMomWeights = wMom;
       momentumSeries.push({ date: retJpOc[i].date, return: momRet });
     }
 
@@ -351,9 +425,15 @@ app.post('/api/backtest', async (req, res) => {
         chartCalendarDays: chartDays,
         rollingReportWindow: rollingWindow
       },
+      ...(dataRecoveryAttempted
+        ? {
+          dataRecoveryNote:
+              '初回の取得では営業日が足りなかったため、自動で Yahoo 経路に切り替えて再取得し、この結果を表示しています。'
+        }
+        : {}),
       costsNote:
-        'PCA 戦略・モメンタム LS は backtest_real と同様の applyTransactionCosts（往復相当でコスト×2）。' +
-        'JP 業種均等ロングはコストなしの単純平均 OC リターン（比較用ベンチマーク）。',
+        '取引コストはターンオーバーに比例（初日のみ全建て相当）。デフォルト 0＝論文の無摩擦。' +
+        'JP 業種均等はコストなしの単純平均 OC（比較用）。',
       results: results.slice(-200),
       metrics: {
         ...toDisplayMetrics(mStrat, stratDays),
@@ -362,16 +442,24 @@ app.post('/api/backtest', async (req, res) => {
         momentum: toDisplayMetrics(mMom, momentumSeries.length)
       },
       yearlyStrategy,
-      rollingSummary
+      rollingSummary,
+      disclosure: riskPayload()
     });
 
   } catch (error) {
     logger.error('Backtest failed', {
       error: error.message,
-      path: '/api/backtest'
+      stack: error.stack,
+      path: '/api/backtest',
+      timestamp: new Date().toISOString()
     });
+    
+    // エラーコードに応じた終了コードの決定（プロセス終了時用）
+    const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+    
     res.status(500).json({
-      error: config.server.isDevelopment ? error.message : 'Backtest failed'
+      error: config.server.isDevelopment ? error.message : 'Backtest failed',
+      code: config.server.isDevelopment ? error.code : undefined
     });
   }
 });
@@ -402,18 +490,20 @@ app.post('/api/signal', async (req, res) => {
 
     logger.info('Generating signal', signalConfig);
 
-    const winDays = signalConfig.windowLength + 50;
-    const [usRes, jpRes] = await Promise.all([
+    // カレンダー日。日米アライメント＋全銘柄揃いで行が落ちるため余裕を持たせる
+    const winDays = Math.max(280, signalConfig.windowLength + 160);
+
+    let [usRes, jpRes] = await Promise.all([
       fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
       fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, config)
     ]);
-    const usData = usRes.byTicker;
-    const jpData = jpRes.byTicker;
+    let usData = usRes.byTicker;
+    let jpData = jpRes.byTicker;
     for (const [ticker, err] of Object.entries({ ...usRes.errors, ...jpRes.errors })) {
       logger.warn(`Signal data ${ticker}: ${err}`);
     }
 
-    const { retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
+    let { retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
       usData,
       jpData,
       US_ETF_TICKERS,
@@ -421,8 +511,67 @@ app.post('/api/signal', async (req, res) => {
       config.backtest.jpWindowReturn
     );
 
+    let signalDataRecoveryAttempted = false;
+    if (
+      retUs.length < signalConfig.windowLength &&
+      !isCsvDataMode(config) &&
+      !isAlreadyFullYahooPath(config)
+    ) {
+      signalDataRecoveryAttempted = true;
+      logger.warn('Signal: 揃った営業日が不足 → Yahoo 経路で自動再取得', {
+        alignedDays: retUs.length,
+        need: signalConfig.windowLength
+      });
+      const recoverCfg = configForYahooDataRecovery(config);
+      [usRes, jpRes] = await Promise.all([
+        fetchOhlcvForTickers(US_ETF_TICKERS, winDays, recoverCfg),
+        fetchOhlcvForTickers(JP_ETF_TICKERS, winDays, recoverCfg)
+      ]);
+      usData = usRes.byTicker;
+      jpData = jpRes.byTicker;
+      for (const [ticker, err] of Object.entries({ ...usRes.errors, ...jpRes.errors })) {
+        logger.warn(`Signal data (recovery) ${ticker}: ${err}`);
+      }
+      ({ retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
+        usData,
+        jpData,
+        US_ETF_TICKERS,
+        JP_ETF_TICKERS,
+        config.backtest.jpWindowReturn
+      ));
+    }
+
     if (retUs.length < signalConfig.windowLength) {
-      return res.json({ error: 'データが不足しています', signals: [] });
+      const usErrN = Object.keys(usRes.errors || {}).length;
+      const jpErrN = Object.keys(jpRes.errors || {}).length;
+      const usProv = String(config.data.usOhlcvProvider || '').toLowerCase();
+      const retrySuffix = signalDataRecoveryAttempted
+        ? ' サーバー側で Yahoo 経路への自動切替・再取得を試みましたが、まだ不足しています。'
+        : '';
+      const avHint =
+        !signalDataRecoveryAttempted && usProv === 'alphavantage'
+          ? ' 米国が Alpha Vantage（無料 compact は約100営業日）のときは窓が大きいと不足しやすいです。画面のデータソースで米国を Yahoo にするか、ウィンドウ長を下げてください。'
+          : '';
+      return res.json({
+        error: 'データが不足しています',
+        detail:
+          `揃った営業日が ${retUs.length} 日（要 ${signalConfig.windowLength} 日以上）。` +
+          `取得窓は約 ${winDays} カレンダー日。米国/日本でエラー記録のある銘柄: ${usErrN} / ${jpErrN}。` +
+          ' API 制限・休場・一部銘柄欠損で行が捨てられている可能性があります。' +
+          retrySuffix +
+          avHint,
+        signals: [],
+        sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources),
+        opsDecision: buildOpsDecision({
+          usSources: usRes.sources,
+          jpSources: jpRes.sources,
+          usErrors: usRes.errors,
+          jpErrors: jpRes.errors,
+          signalDataRecoveryAttempted,
+          insufficientData: true
+        }),
+        disclosure: riskPayload()
+      });
     }
 
     // C_full 計算
@@ -494,7 +643,23 @@ app.post('/api/signal', async (req, res) => {
       metrics: {
         meanSignal: meanSig,
         stdSignal: stdSig
-      }
+      },
+      sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources),
+      opsDecision: buildOpsDecision({
+        usSources: usRes.sources,
+        jpSources: jpRes.sources,
+        usErrors: usRes.errors,
+        jpErrors: jpRes.errors,
+        signalDataRecoveryAttempted,
+        insufficientData: false
+      }),
+      ...(signalDataRecoveryAttempted
+        ? {
+          dataRecoveryNote:
+              '初回の取得では営業日が足りなかったため、自動で Yahoo 経路に切り替えて再取得し、このシグナルを表示しています。'
+        }
+        : {}),
+      disclosure: riskPayload()
     });
 
   } catch (error) {
@@ -512,11 +677,16 @@ app.post('/api/signal', async (req, res) => {
  * 設定取得 API
  */
 app.get('/api/config', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.json({
     windowLength: config.backtest.windowLength,
     nFactors: config.backtest.nFactors,
     lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile
+    quantile: config.backtest.quantile,
+    dataMode: config.data.mode,
+    usOhlcvProvider: config.data.usOhlcvProvider,
+    disclosure: riskPayload(),
+    dataSources: getDataSourcesForUi()
   });
 });
 
@@ -525,14 +695,27 @@ app.get('/api/config', (req, res) => {
  */
 app.post('/api/config', (req, res) => {
   const { windowLength, lambdaReg, quantile } = req.body;
+  const dataMode = req.body.dataMode ?? req.body.mode;
+  const usOhlcvProvider = req.body.usOhlcvProvider ?? req.body.us_ohlcv_provider;
   const errors = [];
+
+  errors.push(
+    ...getDataSourceUpdateErrors({
+      mode: dataMode,
+      usOhlcvProvider
+    })
+  );
+
+  let nextWindowLength = config.backtest.windowLength;
+  let nextLambdaReg = config.backtest.lambdaReg;
+  let nextQuantile = config.backtest.quantile;
 
   if (windowLength !== undefined) {
     const val = parseInt(windowLength, 10);
     if (isNaN(val) || val < 10 || val > 500) {
       errors.push('windowLength must be between 10 and 500');
     } else {
-      config.backtest.windowLength = val;
+      nextWindowLength = val;
     }
   }
 
@@ -541,7 +724,7 @@ app.post('/api/config', (req, res) => {
     if (isNaN(val) || val < 0 || val > 1) {
       errors.push('lambdaReg must be between 0 and 1');
     } else {
-      config.backtest.lambdaReg = val;
+      nextLambdaReg = val;
     }
   }
 
@@ -550,7 +733,7 @@ app.post('/api/config', (req, res) => {
     if (isNaN(val) || val <= 0 || val > 0.5) {
       errors.push('quantile must be between 0 and 0.5');
     } else {
-      config.backtest.quantile = val;
+      nextQuantile = val;
     }
   }
 
@@ -558,18 +741,39 @@ app.post('/api/config', (req, res) => {
     return res.status(400).json({ error: 'Invalid parameters', details: errors });
   }
 
+  applyDataSourceSettings({
+    mode: dataMode,
+    usOhlcvProvider
+  });
+  config.backtest.windowLength = nextWindowLength;
+  config.backtest.lambdaReg = nextLambdaReg;
+  config.backtest.quantile = nextQuantile;
+
   logger.info('Configuration updated via API', {
     windowLength: config.backtest.windowLength,
     lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile
+    quantile: config.backtest.quantile,
+    dataMode: config.data.mode,
+    usOhlcvProvider: config.data.usOhlcvProvider
   });
 
   res.json({
     windowLength: config.backtest.windowLength,
     nFactors: config.backtest.nFactors,
     lambdaReg: config.backtest.lambdaReg,
-    quantile: config.backtest.quantile
+    quantile: config.backtest.quantile,
+    dataMode: config.data.mode,
+    usOhlcvProvider: config.data.usOhlcvProvider,
+    disclosure: riskPayload(),
+    dataSources: getDataSourcesForUi()
   });
+});
+
+/**
+ * 免責・リスク説明（Web / クライアント用）
+ */
+app.get('/api/disclosure', (req, res) => {
+  res.json(riskPayload());
 });
 
 /**
@@ -577,6 +781,29 @@ app.post('/api/config', (req, res) => {
  */
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ============================================
+// エラーハンドリング（全ルートの後）
+// ============================================
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error', {
+    error: err.message,
+    path: req.path,
+    method: req.method
+  });
+
+  const isDev = config.server.isDevelopment;
+  res.status(500).json({
+    error: 'Internal server error',
+    message: isDev ? err.message : undefined,
+    ...(isDev && { stack: err.stack })
+  });
 });
 
 // ============================================
@@ -592,6 +819,7 @@ app.listen(PORT, () => {
     'POST /api/signal': 'Generate signal',
     'GET /api/config': 'Get configuration',
     'POST /api/config': 'Update configuration',
+    'GET /api/disclosure': 'Risk disclaimer text',
     'GET /api/health': 'Health check'
   });
 });

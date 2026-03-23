@@ -1,25 +1,45 @@
+const js = require('@eslint/js');
+
+// ESLint v9 の Flat Config（eslint.config.*）用設定。
+// 既存の .eslintrc.js と同等のルールを、Node + CommonJS 前提で適用する。
 module.exports = [
   {
+    ignores: [
+      'node_modules/**',
+      'coverage/**',
+      'results/**',
+      'public/**',
+      // 補助的な自動修正エージェント（本番実行パス外）
+      'agents/**',
+      // 旧実験スクリプト（段階的に整備予定）
+      'backtest/analysis.js',
+      'backtest/improved.js'
+    ],
+  },
+  js.configs.recommended,
+  {
+    files: ['**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'module',
+      sourceType: 'commonjs',
       globals: {
-        console: 'readonly',
-        process: 'readonly',
-        setTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearTimeout: 'readonly',
-        clearInterval: 'readonly',
-        Buffer: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
+        // CommonJS / Node globals
         require: 'readonly',
         module: 'readonly',
         exports: 'readonly',
-        // CommonJS globals
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setImmediate: 'readonly',
+        clearImmediate: 'readonly',
         global: 'readonly',
-        exports: 'readonly'
-      }
+      },
     },
     rules: {
       indent: ['error', 2],
@@ -29,7 +49,8 @@ module.exports = [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-console': 'off',
       'prefer-const': 'warn',
-      'comma-dangle': ['error', 'never']
-    }
-  }
+      'comma-dangle': ['error', 'never'],
+    },
+  },
 ];
+
