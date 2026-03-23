@@ -388,4 +388,65 @@ describe('lib/pca/subspace', () => {
       }
     });
   });
+
+  describe('エッジケース', () => {
+    test('ゼロ分散の銘柄がある場合', () => {
+      const pca = new SubspaceRegularizedPCA();
+
+      // 最初の銘柄の分散がゼロ
+      const returns = [
+        [0, 0.02, 0.015],
+        [0, 0.015, 0.01],
+        [0, -0.005, -0.008]
+      ];
+
+      expect(() => pca.computePlainPCA(returns)).not.toThrow();
+    });
+
+    test('完全相関の銘柄がある場合', () => {
+      const pca = new SubspaceRegularizedPCA();
+
+      // 2 つ目の銘柄が 1 つ目と完全相関
+      const returns = [
+        [0.01, 0.02, 0.015],
+        [0.02, 0.04, 0.01],
+        [0.015, 0.03, -0.008]
+      ];
+
+      expect(() => pca.computePlainPCA(returns)).not.toThrow();
+    });
+
+    test('サンプル数が少ない場合', () => {
+      const pca = new SubspaceRegularizedPCA();
+
+      // サンプル数 2 の場合
+      const returns = [
+        [0.01, 0.02, 0.015],
+        [0.02, 0.015, 0.01]
+      ];
+
+      expect(() => pca.computePlainPCA(returns)).not.toThrow();
+    });
+
+    test('セクターラベルがない銘柄がある場合', () => {
+      const pca = new SubspaceRegularizedPCA({ orderedSectorKeys: ['US_1', 'US_2', 'JP_1'] });
+      const nUs = 2;
+      const nJp = 1;
+      
+      // ラベルが一部欠落
+      const sectorLabels = {
+        US_1: 'cyclical',
+        // US_2 が欠落
+        JP_1: 'defensive'
+      };
+
+      const CFull = [
+        [1, 0.5, 0.3],
+        [0.5, 1, 0.4],
+        [0.3, 0.4, 1]
+      ];
+
+      expect(() => pca.buildPriorSpace(nUs, nJp, sectorLabels, CFull)).not.toThrow();
+    });
+  });
 });

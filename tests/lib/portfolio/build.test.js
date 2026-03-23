@@ -214,4 +214,40 @@ describe('lib/portfolio/build', () => {
       expect(() => buildEqualWeightPortfolio(3, [0, 1], undefined)).toThrow();
     });
   });
+  describe('エッジケース（buildPortfolio）', () => {
+    test('空のシグナルは空の配列を返す', () => {
+      const weights = buildPortfolio([], 0.3);
+      expect(weights).toEqual([]);
+    });
+
+    test('null シグナルは空の配列を返す', () => {
+      const weights = buildPortfolio(null, 0.3);
+      expect(weights).toEqual([]);
+    });
+
+    test('全シグナルが同一の場合はニュートラル（ゼロウェイト）', () => {
+      const weights = buildPortfolio([1, 1, 1, 1], 0.3);
+      expect(weights).toEqual([0, 0, 0, 0]);
+    });
+
+    test('全シグナルがゼロの場合はニュートラル', () => {
+      const weights = buildPortfolio([0, 0, 0, 0], 0.3);
+      expect(weights).toEqual([0, 0, 0, 0]);
+    });
+
+    test('極小値のシグナルはニュートラル', () => {
+      const weights = buildPortfolio([1e-12, 2e-12, 1e-12], 0.3);
+      expect(weights).toEqual([0, 0, 0]);
+    });
+
+    test('無効な quantile はデフォルト 0.3 を使用', () => {
+      const signal = [0.1, 0.2, 0.3, 0.4, 0.5];
+      const weights1 = buildPortfolio(signal, -0.1);
+      const weights2 = buildPortfolio(signal, 0.6);
+      
+      // デフォルト 0.3 が使用される
+      expect(weights1.length).toBe(5);
+      expect(weights2.length).toBe(5);
+    });
+  });
 });

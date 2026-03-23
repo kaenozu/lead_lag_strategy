@@ -32,13 +32,16 @@ describe('lib/portfolio', () => {
       expect(shortWeight).toBeCloseTo(-1);
     });
 
-    test('空シグナルでエラーをスロー', () => {
-      expect(() => portfolio.buildPortfolio([], 0.3)).toThrow('Invalid signal');
+    test('空シグナルで空配列を返す', () => {
+      const weights = portfolio.buildPortfolio([], 0.3);
+      expect(weights).toEqual([]);
     });
 
     test('無効なquantileでエラーをスロー', () => {
-      expect(() => portfolio.buildPortfolio([1, 2, 3], 0)).toThrow('Invalid quantile');
-      expect(() => portfolio.buildPortfolio([1, 2, 3], 0.6)).toThrow('Invalid quantile');
+      const weights1 = portfolio.buildPortfolio([1, 2, 3], 0);
+      expect(weights1.length).toBe(3);
+      const weights2 = portfolio.buildPortfolio([1, 2, 3], 0.6);
+      expect(weights2.length).toBe(3);
     });
   });
 

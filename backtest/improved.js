@@ -84,9 +84,30 @@ function loadLocalData(dataDir, tickers) {
 // ポートフォリオ & パフォーマンス
 // ============================================================================
 
+/**
+ * パフォーマンス指標の計算（年率換算・表示単位補正）
+ * @param {Array<number>} returns - リターン系列（日次）
+ * @param {number} ann - 年率換算係数（デフォルト：252）
+ * @returns {Object} パフォーマンス指標（AR, RISK はパーセント表示）
+ */
 function computeMetrics(returns, ann = 252) {
     const m = computePerformanceMetrics(returns);
-    m.AR = m.AR * ann / 252;
+    
+    // 年率リターン：日次 → 年率（×252）、パーセント表示（×100）
+    m.AR = (m.AR * ann / 252) * 100;
+    
+    // 年率リスク：日次 → 年率（×√252）、パーセント表示（×100）
+    m.RISK = (m.RISK * Math.sqrt(ann / 252)) * 100;
+    
+    // R/R 比：単位なし（そのまま）
+    m.RR = m.RR;
+    
+    // MDD：パーセント表示（×100）
+    m.MDD = m.MDD * 100;
+    
+    // Total：累積リターンから計算（パーセント表示）
+    m.Total = (m.Cumulative - 1) * 100;
+    
     return m;
 }
 
