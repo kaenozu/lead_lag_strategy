@@ -18,6 +18,9 @@ const { createLogger } = require('../lib/logger');
 
 const logger = createLogger('FixTestsAgent');
 
+// テンプレート文字列内で \${...} を出力するための補助定数
+const TEMPLATE_DOLLAR = '$';
+
 // ============================================
 // 修正タスク定義
 // ============================================
@@ -626,7 +629,7 @@ describe('computeRollingMetrics', () => {
     const results = [];
     for (let i = 0; i < 100; i++) {
       results.push({
-        date: \`2023-01-${String(i + 1).padStart(2, '0')}\`,
+        date: \`2023-01-${TEMPLATE_DOLLAR}{String(i + 1).padStart(2, '0')}\`,
         return: (Math.random() - 0.5) * 0.04
       });
     }

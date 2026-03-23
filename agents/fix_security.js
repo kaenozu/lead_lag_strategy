@@ -105,20 +105,20 @@ function apiKeyAuth(req, res, next) {
 
   // API エンドポイントへの認証適用
   // app.use('/api/backtest', backtestLimiter); を置換
-  if (content.includes("app.use('/api/backtest', backtestLimiter)") && 
-      !content.includes("apiKeyAuth, backtestLimiter")) {
+  if (content.includes('app.use(\'/api/backtest\', backtestLimiter)') &&
+      !content.includes('apiKeyAuth, backtestLimiter')) {
     content = content.replace(
-      "app.use('/api/backtest', backtestLimiter)",
-      "app.use('/api/backtest', apiKeyAuth, backtestLimiter)"
+      'app.use(\'/api/backtest\', backtestLimiter)',
+      'app.use(\'/api/backtest\', apiKeyAuth, backtestLimiter)'
     );
     logger.info('/api/backtest に認証を適用しました');
   }
 
-  if (content.includes("app.use('/api/signal', apiLimiter)") && 
-      !content.includes("apiKeyAuth, apiLimiter")) {
+  if (content.includes('app.use(\'/api/signal\', apiLimiter)') &&
+      !content.includes('apiKeyAuth, apiLimiter')) {
     content = content.replace(
-      "app.use('/api/signal', apiLimiter)",
-      "app.use('/api/signal', apiKeyAuth, apiLimiter)"
+      'app.use(\'/api/signal\', apiLimiter)',
+      'app.use(\'/api/signal\', apiKeyAuth, apiLimiter)'
     );
     logger.info('/api/signal に認証を適用しました');
   }

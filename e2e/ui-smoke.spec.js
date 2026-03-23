@@ -59,6 +59,7 @@ test.describe('本番 UI（静的 + API モック）', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: /今日の候補一覧/ })).toBeVisible();
+    await page.getByRole('button', { name: /シグナル生成/ }).click();
 
     await expect(page.locator('#todaySummary')).toBeVisible();
     await expect(page.locator('#todaySummary')).toContainText('買い候補（強いと出ている業種のファンド）');
@@ -76,5 +77,55 @@ test.describe('本番 UI（静的 + API モック）', () => {
       path: shotPath,
       contentType: 'image/png'
     });
+  });
+
+  test('時間外は起動時に自動取得せず案内メッセージを表示する', async ({ page }) => {
+    await page.addInitScript(() => {
+      const RealDate = Date;
+      const fixedIso = '2026-03-22T12:00:00.000Z'; // JST 日曜 21:00（自動取得時間外）
+
+      // eslint-disable-next-line no-global-assign
+      Date = class extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedIso);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return new RealDate(fixedIso).getTime();
+        }
+      };
+    });
+
+    let signalRequestCount = 0;
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          windowLength: 60,
+          nFactors: 3,
+          lambdaReg: 0.9,
+          quantile: 0.4
+        })
+      });
+    });
+    await page.route('**/api/signal', async (route) => {
+      signalRequestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(signalFixture)
+      });
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#signalContent')).toContainText('時間外のため自動取得しません');
+    await expect(page.locator('#signalCacheNote')).toContainText('起動時の自動実行は平日 8:45-8:55');
+    await expect(page.locator('#todaySummary')).toBeHidden();
+    expect(signalRequestCount).toBe(0);
   });
 });

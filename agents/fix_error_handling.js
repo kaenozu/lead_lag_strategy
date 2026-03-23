@@ -198,9 +198,9 @@ process.on('uncaughtException', (error) => {
 `;
 
   // 'use strict' の後に追加
-  if (content.includes("'use strict';")) {
+  if (content.includes('\'use strict\';')) {
     content = content.replace(
-      "'use strict';",
+      '\'use strict\';',
       `'use strict';${globalHandler}`
     );
     logger.info(`${fileName} にグローバルエラーハンドラーを追加しました`);
@@ -221,7 +221,7 @@ function enhanceErrorLogging(filePath) {
     return false;
   }
 
-  let content = fs.readFileSync(filePath, 'utf8');
+  const content = fs.readFileSync(filePath, 'utf8');
   const fileName = path.basename(filePath);
 
   // try-catch ブロックの logger.error を強化
