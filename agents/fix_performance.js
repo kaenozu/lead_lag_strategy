@@ -148,7 +148,7 @@ function optimizeArrayOperations(filePath) {
     return false;
   }
 
-  let content = fs.readFileSync(filePath, 'utf8');
+  const content = fs.readFileSync(filePath, 'utf8');
   const fileName = path.basename(filePath);
 
   // .map(r => r.values) の重複計算を検出
@@ -179,7 +179,7 @@ function optimizeMemoryUsage(filePath) {
     return false;
   }
 
-  let content = fs.readFileSync(filePath, 'utf8');
+  const content = fs.readFileSync(filePath, 'utf8');
   const fileName = path.basename(filePath);
 
   // 不要な中間配列の削除
