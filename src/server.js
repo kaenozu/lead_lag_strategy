@@ -813,7 +813,7 @@ app.use((err, req, res, next) => {
 const PORT = config.server.port;
 
 app.listen(PORT, () => {
-  logger.info(`Server started`, { port: PORT, env: config.server.env });
+  logger.info('Server started', { port: PORT, env: config.server.env });
   logger.info('API endpoints:', {
     'POST /api/backtest': 'Run backtest',
     'POST /api/signal': 'Generate signal',
