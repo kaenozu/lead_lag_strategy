@@ -49,6 +49,26 @@ const app = express();
 
 if (config.server.trustProxy) app.set('trust proxy', config.server.trustProxy);
 
+// API キー認証（環境変数 API_KEY が設定されている場合のみ有効）
+const API_KEY = process.env.API_KEY;
+
+/**
+ * API キー認証ミドルウェア
+ * API_KEY が設定されている場合、X-API-Key ヘッダーを検証
+ */
+function apiKeyAuth(req, res, next) {
+  if (!API_KEY) {
+    // API_KEY が未設定の場合は認証をスキップ（開発モード）
+    return next();
+  }
+  const key = req.headers['x-api-key'];
+  if (!key || key !== API_KEY) {
+    logger.warn('Unauthorized API access attempt', { ip: req.ip, path: req.path });
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+  next();
+}
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -71,6 +91,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static('public'));
 app.use('/api/', apiLimiter);
 app.use('/api/backtest', backtestLimiter);
+app.use('/api/backtest', apiKeyAuth);
+app.use('/api/signal', apiKeyAuth);
 
 const configErrors = validate();
 if (configErrors.length > 0) {

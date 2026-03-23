@@ -50,52 +50,52 @@ function pythonGolden() {
 
 function runNodeParity() {
   const R = FIXTURE.returnsCombined;
-    const nUs = 2;
-    const returnsUs = R.map(row => row.slice(0, nUs));
-    const returnsJp = R.map(row => row.slice(nUs));
+  const nUs = 2;
+  const returnsUs = R.map(row => row.slice(0, nUs));
+  const returnsJp = R.map(row => row.slice(nUs));
 
-    const pcaCfg = {
-      lambdaReg: FIXTURE.lambdaReg,
-      nFactors: FIXTURE.nFactors,
-      orderedSectorKeys: FIXTURE.orderedSectorKeys
-    };
+  const pcaCfg = {
+    lambdaReg: FIXTURE.lambdaReg,
+    nFactors: FIXTURE.nFactors,
+    orderedSectorKeys: FIXTURE.orderedSectorKeys
+  };
 
-    const nSamples = R.length;
-    const N = nUs + R[0].length - nUs;
-    const mu = new Array(N).fill(0);
-    for (let j = 0; j < N; j++) {
-      let s = 0;
-      for (let i = 0; i < nSamples; i++) s += R[i][j];
-      mu[j] = s / nSamples;
+  const nSamples = R.length;
+  const N = nUs + R[0].length - nUs;
+  const mu = new Array(N).fill(0);
+  for (let j = 0; j < N; j++) {
+    let s = 0;
+    for (let i = 0; i < nSamples; i++) s += R[i][j];
+    mu[j] = s / nSamples;
+  }
+  const sigma = new Array(N).fill(0);
+  for (let j = 0; j < N; j++) {
+    let sumSq = 0;
+    for (let i = 0; i < nSamples; i++) {
+      const d = R[i][j] - mu[j];
+      sumSq += d * d;
     }
-    const sigma = new Array(N).fill(0);
-    for (let j = 0; j < N; j++) {
-      let sumSq = 0;
-      for (let i = 0; i < nSamples; i++) {
-        const d = R[i][j] - mu[j];
-        sumSq += d * d;
-      }
-      sigma[j] = Math.sqrt(sumSq / nSamples) + 1e-10;
-    }
-    const returnsStd = R.map(row => row.map((x, j) => (x - mu[j]) / sigma[j]));
+    sigma[j] = Math.sqrt(sumSq / nSamples) + 1e-10;
+  }
+  const returnsStd = R.map(row => row.map((x, j) => (x - mu[j]) / sigma[j]));
 
-    const pca = new SubspaceRegularizedPCA(pcaCfg);
-    const { eigenvalues, CReg } = pca.computeRegularizedPCA(
-      returnsStd,
-      FIXTURE.sectorLabels,
-      FIXTURE.CFull
-    );
+  const pca = new SubspaceRegularizedPCA(pcaCfg);
+  const { eigenvalues, CReg } = pca.computeRegularizedPCA(
+    returnsStd,
+    FIXTURE.sectorLabels,
+    FIXTURE.CFull
+  );
 
-    const gen = new LeadLagSignal(pcaCfg);
-    const signal = gen.computeSignal(
-      returnsUs,
-      returnsJp,
-      FIXTURE.returnsUsLatest,
-      FIXTURE.sectorLabels,
-      FIXTURE.CFull
-    );
+  const gen = new LeadLagSignal(pcaCfg);
+  const signal = gen.computeSignal(
+    returnsUs,
+    returnsJp,
+    FIXTURE.returnsUsLatest,
+    FIXTURE.sectorLabels,
+    FIXTURE.CFull
+  );
 
-    return { eigenvalues, CReg, signal };
+  return { eigenvalues, CReg, signal };
 }
 
 describe('paper parity', () => {
@@ -119,7 +119,7 @@ describe('paper parity', () => {
     try {
       py = pythonGolden();
     } catch (e) {
-      // eslint-disable-next-line no-console
+       
       console.warn('skip Python check:', e.message);
       return;
     }
