@@ -7,15 +7,16 @@
 const fs = require('fs');
 const path = require('path');
 
-// 設定
-const INITIAL_CAPITAL = 1000000;  // 初期資金 100 万円
-const COMMISSION_RATE = 0.0003;    // 手数料 0.03%
-const SLIPPAGE_RATE = 0.0005;      // スリッページ 0.05%
+const INITIAL_CAPITAL = 1000000;
+const COMMISSION_RATE = 0.0003;
+const SLIPPAGE_RATE = 0.0005;
+const SHORT_MARGIN_RATE = 0.3;
 
 class PaperTrader {
-    constructor(initialCapital = INITIAL_CAPITAL) {
+    constructor(initialCapital = INITIAL_CAPITAL, marginRate = SHORT_MARGIN_RATE) {
         this.capital = initialCapital;
         this.initialCapital = initialCapital;
+        this.marginRate = marginRate;
         this.positions = [];
         this.trades = [];
         this.dailyReturns = [];
@@ -59,7 +60,7 @@ class PaperTrader {
         const proceeds = shares * price;
         const commission = proceeds * COMMISSION_RATE;
         const slippage = proceeds * SLIPPAGE_RATE;
-        const margin = proceeds * 0.3;  // 委託保証金 30%
+        const margin = proceeds * this.marginRate;
 
         if (margin > this.capital) return null;
 
@@ -221,7 +222,7 @@ async function main() {
     console.log('📝 ペーパートレードツール');
     console.log('='.repeat(70));
 
-    const outputDir = path.join(__dirname, 'results');
+    const outputDir = path.join(__dirname, '..', 'results');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     // トレーダー作成

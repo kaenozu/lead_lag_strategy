@@ -9,25 +9,25 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 // ライブラリ
-const { createLogger } = require('./lib/logger');
-const { config, validate } = require('./lib/config');
-const { LeadLagSignal } = require('./lib/pca');
+const { createLogger } = require('../lib/logger');
+const { config, validate } = require('../lib/config');
+const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
   applyTransactionCosts,
   computeYearlyPerformance,
   computeRollingMetrics
-} = require('./lib/portfolio');
+} = require('../lib/portfolio');
 const {
   correlationMatrixSample
-} = require('./lib/math');
+} = require('../lib/math');
 const {
   fetchWithRetry,
   fetchOhlcvForTickers,
   buildReturnMatricesFromOhlcv
-} = require('./lib/data');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('./lib/constants');
+} = require('../lib/data');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 
 const logger = createLogger('Server');
 
@@ -525,10 +525,44 @@ app.get('/api/config', (req, res) => {
  */
 app.post('/api/config', (req, res) => {
   const { windowLength, lambdaReg, quantile } = req.body;
+  const errors = [];
 
-  if (windowLength !== undefined) config.backtest.windowLength = windowLength;
-  if (lambdaReg !== undefined) config.backtest.lambdaReg = lambdaReg;
-  if (quantile !== undefined) config.backtest.quantile = quantile;
+  if (windowLength !== undefined) {
+    const val = parseInt(windowLength, 10);
+    if (isNaN(val) || val < 10 || val > 500) {
+      errors.push('windowLength must be between 10 and 500');
+    } else {
+      config.backtest.windowLength = val;
+    }
+  }
+
+  if (lambdaReg !== undefined) {
+    const val = parseFloat(lambdaReg);
+    if (isNaN(val) || val < 0 || val > 1) {
+      errors.push('lambdaReg must be between 0 and 1');
+    } else {
+      config.backtest.lambdaReg = val;
+    }
+  }
+
+  if (quantile !== undefined) {
+    const val = parseFloat(quantile);
+    if (isNaN(val) || val <= 0 || val > 0.5) {
+      errors.push('quantile must be between 0 and 0.5');
+    } else {
+      config.backtest.quantile = val;
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ error: 'Invalid parameters', details: errors });
+  }
+
+  logger.info('Configuration updated via API', {
+    windowLength: config.backtest.windowLength,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile
+  });
 
   res.json({
     windowLength: config.backtest.windowLength,

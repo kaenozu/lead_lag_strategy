@@ -7,11 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
-const { LeadLagSignal } = require('./lib/pca');
-const { buildLeadLagMatrices } = require('./lib/lead_lag_matrices');
-const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
-const { correlationMatrixSample } = require('./lib/math');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./lib/constants');
+const { LeadLagSignal } = require('../lib/pca');
+const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
+const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
+const { correlationMatrixSample } = require('../lib/math');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 
 // ============================================================================
 // 設定
@@ -84,9 +84,30 @@ function loadLocalData(dataDir, tickers) {
 // ポートフォリオ & パフォーマンス
 // ============================================================================
 
+/**
+ * パフォーマンス指標の計算（年率換算・表示単位補正）
+ * @param {Array<number>} returns - リターン系列（日次）
+ * @param {number} ann - 年率換算係数（デフォルト：252）
+ * @returns {Object} パフォーマンス指標（AR, RISK はパーセント表示）
+ */
 function computeMetrics(returns, ann = 252) {
     const m = computePerformanceMetrics(returns);
-    m.AR = m.AR * ann / 252;
+    
+    // 年率リターン：日次 → 年率（×252）、パーセント表示（×100）
+    m.AR = (m.AR * ann / 252) * 100;
+    
+    // 年率リスク：日次 → 年率（×√252）、パーセント表示（×100）
+    m.RISK = (m.RISK * Math.sqrt(ann / 252)) * 100;
+    
+    // R/R 比：単位なし（そのまま）
+    m.RR = m.RR;
+    
+    // MDD：パーセント表示（×100）
+    m.MDD = m.MDD * 100;
+    
+    // Total：累積リターンから計算（パーセント表示）
+    m.Total = (m.Cumulative - 1) * 100;
+    
     return m;
 }
 
@@ -241,8 +262,8 @@ async function main() {
     console.log('日米業種リードラグ戦略 - 改良版（Yahoo Finance 直接取得）');
     console.log('='.repeat(70));
 
-    const dataDir = path.join(__dirname, 'data');
-    const outputDir = path.join(__dirname, 'results');
+    const dataDir = path.join(__dirname, '..', 'data');
+    const outputDir = path.join(__dirname, '..', 'results');
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
@@ -316,19 +337,23 @@ async function main() {
     ];
     
     for (const { name, m } of summary) {
+        const total = m.Total !== undefined ? m.Total : m.Cumulative !== undefined ? (m.Cumulative - 1) * 100 : 0;
         console.log(
             name.padEnd(15) +
-            m.AR.toFixed(2).padStart(10) +
-            m.RISK.toFixed(2).padStart(10) +
-            m.RR.toFixed(2).padStart(8) +
-            m.MDD.toFixed(2).padStart(10) +
-            m.Total.toFixed(2).padStart(12)
+            (m.AR || 0).toFixed(2).padStart(10) +
+            (m.RISK || 0).toFixed(2).padStart(10) +
+            (m.RR || 0).toFixed(2).padStart(8) +
+            (m.MDD || 0).toFixed(2).padStart(10) +
+            total.toFixed(2).padStart(12)
         );
     }
-    
+
     // 結果保存
     const summaryCSV = 'Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)\n' +
-        summary.map(s => `${s.name},${s.m.AR.toFixed(4)},${s.m.RISK.toFixed(4)},${s.m.RR.toFixed(4)},${s.m.MDD.toFixed(4)},${s.m.Total.toFixed(4)}`).join('\n');
+        summary.map(s => {
+            const total = s.m.Total !== undefined ? s.m.Total : s.m.Cumulative !== undefined ? (s.m.Cumulative - 1) * 100 : 0;
+            return `${s.name},${(s.m.AR || 0).toFixed(4)},${(s.m.RISK || 0).toFixed(4)},${(s.m.RR || 0).toFixed(4)},${(s.m.MDD || 0).toFixed(4)},${total.toFixed(4)}`;
+        }).join('\n');
     fs.writeFileSync(path.join(outputDir, 'backtest_summary_improved.csv'), summaryCSV);
     
     // 累積リターン

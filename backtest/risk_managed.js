@@ -9,11 +9,11 @@ const path = require('path');
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
 
-const { LeadLagSignal } = require('./lib/pca');
-const { correlationMatrixSample } = require('./lib/math');
-const { buildPaperAlignedReturnRows } = require('./lib/data');
-const { config: appConfig } = require('./lib/config');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./lib/constants');
+const { LeadLagSignal } = require('../lib/pca');
+const { correlationMatrixSample } = require('../lib/math');
+const { buildPaperAlignedReturnRows } = require('../lib/data');
+const { config: appConfig } = require('../lib/config');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 
 // ============================================================================
 // 設定（リスク管理強化）
@@ -276,8 +276,8 @@ async function main() {
     console.log('日米業種リードラグ戦略 - リスク管理強化版');
     console.log('='.repeat(70));
 
-    const dataDir = path.join(__dirname, 'data');
-    const outputDir = path.join(__dirname, 'results');
+    const dataDir = path.join(__dirname, '..', 'data');
+    const outputDir = path.join(__dirname, '..', 'results');
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 

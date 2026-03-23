@@ -9,16 +9,16 @@ const fs = require('fs');
 const path = require('path');
 
 // ライブラリ
-const { createLogger } = require('./lib/logger');
-const { config } = require('./lib/config');
-const { LeadLagSignal } = require('./lib/pca');
-const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
-const { correlationMatrixSample } = require('./lib/math');
+const { createLogger } = require('../lib/logger');
+const { config } = require('../lib/config');
+const { LeadLagSignal } = require('../lib/pca');
+const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
+const { correlationMatrixSample } = require('../lib/math');
 const {
   fetchOhlcvForTickers,
   buildReturnMatricesFromOhlcv
-} = require('./lib/data');
-const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('./lib/constants');
+} = require('../lib/data');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 
 const logger = createLogger('SignalGenerator');
 
