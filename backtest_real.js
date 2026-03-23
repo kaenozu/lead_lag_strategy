@@ -19,43 +19,17 @@ const { LeadLagSignal } = require('./lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
-  applyTransactionCosts,
-  computeYearlyPerformance
+  applyTransactionCosts
 } = require('./lib/portfolio');
 const { correlationMatrixSample } = require('./lib/math');
 const {
   fetchWithRetry,
   loadCSV,
-  saveCSV,
   buildPaperAlignedReturnRows
 } = require('./lib/data');
+const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('./lib/constants');
 
 const logger = createLogger('BacktestReal');
-
-// ============================================================================
-// 定数
-// ============================================================================
-
-const US_ETF_TICKERS = [
-  'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'
-];
-
-const JP_ETF_TICKERS = [
-  '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
-  '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
-  '1631.T', '1632.T', '1633.T'
-];
-
-const SECTOR_LABELS = {
-  'US_XLB': 'cyclical', 'US_XLE': 'cyclical', 'US_XLF': 'cyclical', 'US_XLRE': 'cyclical',
-  'US_XLK': 'defensive', 'US_XLP': 'defensive', 'US_XLU': 'defensive', 'US_XLV': 'defensive',
-  'US_XLI': 'neutral', 'US_XLC': 'neutral', 'US_XLY': 'neutral',
-  'JP_1618.T': 'cyclical', 'JP_1625.T': 'cyclical', 'JP_1629.T': 'cyclical', 'JP_1631.T': 'cyclical',
-  'JP_1617.T': 'defensive', 'JP_1621.T': 'defensive', 'JP_1627.T': 'defensive', 'JP_1630.T': 'defensive',
-  'JP_1619.T': 'neutral', 'JP_1620.T': 'neutral', 'JP_1622.T': 'neutral', 'JP_1623.T': 'neutral',
-  'JP_1624.T': 'neutral', 'JP_1626.T': 'neutral', 'JP_1628.T': 'neutral', 'JP_1632.T': 'neutral',
-  'JP_1633.T': 'neutral'
-};
 
 // ============================================================================
 // データ取得
@@ -525,7 +499,7 @@ async function main() {
   fs.writeFileSync(path.join(outputDir, 'backtest_summary_real.csv'), summaryCSV);
 
   // 累積リターン
-  for (const { name, m } of summary) {
+  for (const { name } of summary) {
     const strat = name === 'MOM' ? resultsMom : name === 'PCA PLAIN' ? resultsPlain : resultsSub;
     let cum = 1;
     const cumData = strat.returns.map(r => {

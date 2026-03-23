@@ -78,7 +78,7 @@ app.use((req, res) => {
 });
 
 // 汎用エラーハンドラー（機密情報を除外）
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   logger.error('Unhandled error', {
     error: err.message,
     path: req.path,
@@ -158,14 +158,6 @@ function validateBacktestParams(body) {
 }
 
 /**
- * 数値パラメータを安全に解析（デフォルト値付き）
- */
-function parseLambdaReg(value, defaultVal) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : defaultVal;
-}
-
-/**
  * 表示用メトリクスに変換
  */
 function toDisplayMetrics(raw, dayCount) {
@@ -204,7 +196,7 @@ app.post('/api/backtest', async (req, res) => {
         ? validation.params.lambdaReg
         : config.backtest.lambdaReg,
       quantile: validation.params.quantile || config.backtest.quantile,
-      warmupPeriod: validation.params.windowLength || config.backtest.warmupPeriod,
+      warmupPeriod: validation.params.warmupPeriod || config.backtest.warmupPeriod,
       orderedSectorKeys: config.pca.orderedSectorKeys
     };
 
@@ -425,6 +417,10 @@ app.post('/api/signal', async (req, res) => {
       return res.json({ error: 'データが不足しています', signals: [] });
     }
 
+    if (retJp.length < retUs.length) {
+      return res.json({ error: '日本市場データが不足しています', signals: [] });
+    }
+
     // C_full 計算
     const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
     const CFull = correlationMatrixSample(combined);
@@ -463,7 +459,8 @@ app.post('/api/signal', async (req, res) => {
             { maxRetries: 2, baseDelay: 500 }
           );
           return [ticker, quote.regularMarketPrice || 0];
-        } catch {
+        } catch (error) {
+          logger.warn(`Quote fetch failed for ${ticker}`, { error: error.message });
           return [ticker, 0];
         }
       })
@@ -552,7 +549,7 @@ app.get('/api/health', (req, res) => {
 const PORT = config.server.port;
 
 app.listen(PORT, () => {
-  logger.info(`Server started`, { port: PORT, env: config.server.env });
+  logger.info('Server started', { port: PORT, env: config.server.env });
   logger.info('API endpoints:', {
     'POST /api/backtest': 'Run backtest',
     'POST /api/signal': 'Generate signal',

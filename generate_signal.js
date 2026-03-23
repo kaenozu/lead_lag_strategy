@@ -12,7 +12,6 @@ const path = require('path');
 const { createLogger } = require('./lib/logger');
 const { config } = require('./lib/config');
 const { LeadLagSignal } = require('./lib/pca');
-const { buildPortfolio, computePerformanceMetrics } = require('./lib/portfolio');
 const { correlationMatrixSample } = require('./lib/math');
 const {
   fetchOhlcvForTickers,
@@ -36,31 +35,31 @@ function parseArgs() {
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case '--window':
-      case '-w':
-        options.windowLength = parseInt(args[++i]);
-        break;
-      case '--lambda':
-      case '-l':
-        options.lambdaReg = parseFloat(args[++i]);
-        break;
-      case '--quantile':
-      case '-q':
-        options.quantile = parseFloat(args[++i]);
-        break;
-      case '--no-save':
-        options.save = false;
-        break;
-      case '--help':
-      case '-h':
-        console.log('Usage: node generate_signal.js [options]');
-        console.log('Options:');
-        console.log('  --window, -w <n>    Window length (default: 60)');
-        console.log('  --lambda, -l <n>    Lambda regularization (default: 0.9)');
-        console.log('  --quantile, -q <n>  Quantile (default: 0.4)');
-        console.log('  --no-save           Do not save results');
-        console.log('  --help, -h          Show this help');
-        process.exit(0);
+    case '--window':
+    case '-w':
+      options.windowLength = parseInt(args[++i]);
+      break;
+    case '--lambda':
+    case '-l':
+      options.lambdaReg = parseFloat(args[++i]);
+      break;
+    case '--quantile':
+    case '-q':
+      options.quantile = parseFloat(args[++i]);
+      break;
+    case '--no-save':
+      options.save = false;
+      break;
+    case '--help':
+    case '-h':
+      console.log('Usage: node generate_signal.js [options]');
+      console.log('Options:');
+      console.log('  --window, -w <n>    Window length (default: 60)');
+      console.log('  --lambda, -l <n>    Lambda regularization (default: 0.9)');
+      console.log('  --quantile, -q <n>  Quantile (default: 0.4)');
+      console.log('  --no-save           Do not save results');
+      console.log('  --help, -h          Show this help');
+      process.exit(0);
     }
   }
 
@@ -212,7 +211,7 @@ async function main() {
       ).join('\n');
     fs.writeFileSync(csvPath, csvContent);
 
-    console.log(`\n💾 Results saved:`);
+    console.log('\n💾 Results saved:');
     console.log(`  - ${jsonPath}`);
     console.log(`  - ${csvPath}`);
   }

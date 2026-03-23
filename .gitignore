@@ -40,3 +40,10 @@ e2e-artifacts/*
 !e2e-artifacts/.gitkeep
 playwright-report/
 test-results/
+
+# キャッシュ・一時ファイル
+.eslintcache
+.cache/
+__pycache__/
+*.pyc
+*.pyo
