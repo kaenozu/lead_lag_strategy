@@ -355,4 +355,11 @@ async function main() {
   console.log('='.repeat(70));
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(error => {
+    const { createLogger } = require('../lib/logger');
+    const logger = createLogger('BacktestRiskManaged');
+    logger.error('Backtest failed', { error: error.message, stack: error.stack });
+    process.exit(1);
+  });
+}
