@@ -24,6 +24,7 @@ const {
   isAlreadyFullYahooPath,
   configForYahooDataRecovery
 } = require('../lib/data/sourceRecovery');
+const { SIGNAL_MIN_WINDOW_DAYS } = require('../lib/config');
 
 const logger = createLogger('SignalGenerator');
 
@@ -81,7 +82,7 @@ async function main() {
   logger.info('Signal generation started', options);
 
   // Web API（POST /api/signal）と同じカレンダー窓
-  const winDays = Math.max(280, options.windowLength + 160);
+  const winDays = Math.max(SIGNAL_MIN_WINDOW_DAYS, options.windowLength + 160);
   console.log('\n📡 Loading market data (parallel per region)...');
 
   let [usRes, jpRes] = await Promise.all([

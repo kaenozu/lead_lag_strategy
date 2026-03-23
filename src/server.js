@@ -16,7 +16,9 @@ const {
   validate,
   getDataSourcesForUi,
   applyDataSourceSettings,
-  getDataSourceUpdateErrors
+  getDataSourceUpdateErrors,
+  DATA_MARGIN_DAYS,
+  SIGNAL_MIN_WINDOW_DAYS
 } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const {
@@ -44,6 +46,9 @@ const {
 } = require('../lib/data/sourceRecovery');
 
 const logger = createLogger('Server');
+
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 
 const app = express();
 
@@ -247,7 +252,7 @@ app.post('/api/backtest', async (req, res) => {
     });
 
     logger.info('Fetching US/JP ETF data (parallel)');
-    const needDays = backtestConfig.warmupPeriod + 10;
+    const needDays = backtestConfig.warmupPeriod + DATA_MARGIN_DAYS;
     let [usRes, jpRes] = await Promise.all([
       fetchOhlcvForTickers(US_ETF_TICKERS, chartDays, config),
       fetchOhlcvForTickers(JP_ETF_TICKERS, chartDays, config)
@@ -490,8 +495,7 @@ app.post('/api/signal', async (req, res) => {
 
     logger.info('Generating signal', signalConfig);
 
-    // カレンダー日。日米アライメント＋全銘柄揃いで行が落ちるため余裕を持たせる
-    const winDays = Math.max(280, signalConfig.windowLength + 160);
+    const winDays = Math.max(SIGNAL_MIN_WINDOW_DAYS, signalConfig.windowLength + 160);
 
     let [usRes, jpRes] = await Promise.all([
       fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
@@ -602,8 +606,6 @@ app.post('/api/signal', async (req, res) => {
 
     signals.forEach((s, i) => s.rank = i + 1);
 
-    const YahooFinance = require('yahoo-finance2').default;
-    const yahooFinance = new YahooFinance();
     const quoteResults = await Promise.all(
       JP_ETF_TICKERS.map(async (ticker) => {
         try {

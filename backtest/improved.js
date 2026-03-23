@@ -92,22 +92,22 @@ function loadLocalData(dataDir, tickers) {
  */
 function computeMetrics(returns, ann = 252) {
     const m = computePerformanceMetrics(returns);
-    
-    // 年率リターン：日次 → 年率（×252）、パーセント表示（×100）
-    m.AR = (m.AR * ann / 252) * 100;
-    
-    // 年率リスク：日次 → 年率（×√252）、パーセント表示（×100）
-    m.RISK = (m.RISK * Math.sqrt(ann / 252)) * 100;
-    
+
+    // 年率リターン：既に年率換算済みなので、パーセント表示のみ（×100）
+    m.AR = m.AR * 100;
+
+    // 年率リスク：既に年率換算済みなので、パーセント表示のみ（×100）
+    m.RISK = m.RISK * 100;
+
     // R/R 比：単位なし（そのまま）
     m.RR = m.RR;
-    
+
     // MDD：パーセント表示（×100）
     m.MDD = m.MDD * 100;
-    
+
     // Total：累積リターンから計算（パーセント表示）
     m.Total = (m.Cumulative - 1) * 100;
-    
+
     return m;
 }
 

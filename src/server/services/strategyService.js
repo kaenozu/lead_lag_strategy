@@ -1,6 +1,7 @@
 'use strict';
 
 const YahooFinance = require('yahoo-finance2').default;
+const { DATA_MARGIN_DAYS, SIGNAL_MIN_WINDOW_DAYS } = require('../../lib/config');
 
 function toDisplayMetrics(raw, dayCount) {
   return {
@@ -61,7 +62,7 @@ function createStrategyService(deps) {
     const chartDays = config.backtest.chartCalendarDays;
     logger.info('Running backtest', { ...backtestConfig, chartCalendarDays: chartDays, costs });
 
-    const needDays = backtestConfig.warmupPeriod + 10;
+    const needDays = backtestConfig.warmupPeriod + DATA_MARGIN_DAYS;
     let [usRes, jpRes] = await Promise.all([
       fetchMarketDataForTickers(US_ETF_TICKERS, chartDays, config),
       fetchMarketDataForTickers(JP_ETF_TICKERS, chartDays, config)
@@ -232,7 +233,7 @@ function createStrategyService(deps) {
       orderedSectorKeys: config.pca.orderedSectorKeys
     };
 
-    const winDays = Math.max(280, signalConfig.windowLength + 160);
+    const winDays = Math.max(SIGNAL_MIN_WINDOW_DAYS, signalConfig.windowLength + 160);
     let [usRes, jpRes] = await Promise.all([
       fetchMarketDataForTickers(US_ETF_TICKERS, winDays, config),
       fetchMarketDataForTickers(JP_ETF_TICKERS, winDays, config)
