@@ -59,6 +59,7 @@ test.describe('本番 UI（静的 + API モック）', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: /今日の候補一覧/ })).toBeVisible();
+    await page.getByRole('button', { name: /シグナル生成/ }).click();
 
     await expect(page.locator('#todaySummary')).toBeVisible();
     await expect(page.locator('#todaySummary')).toContainText('買い候補（強いと出ている業種のファンド）');
