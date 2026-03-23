@@ -121,7 +121,6 @@ describe('paper parity', () => {
     } catch (e) {
        
       console.warn('skip Python check:', e.message);
-      expect(true).toBe(true);
       return;
     }
 

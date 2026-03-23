@@ -14,7 +14,7 @@ module.exports = [
       // 旧実験スクリプト（段階的に整備予定）
       'backtest/analysis.js',
       'backtest/improved.js'
-    ],
+    ]
   },
   js.configs.recommended,
   {
@@ -38,8 +38,8 @@ module.exports = [
         clearInterval: 'readonly',
         setImmediate: 'readonly',
         clearImmediate: 'readonly',
-        global: 'readonly',
-      },
+        global: 'readonly'
+      }
     },
     rules: {
       indent: ['error', 2],
@@ -49,8 +49,8 @@ module.exports = [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-console': 'off',
       'prefer-const': 'warn',
-      'comma-dangle': ['error', 'never'],
-    },
-  },
+      'comma-dangle': ['error', 'never']
+    }
+  }
 ];
 
