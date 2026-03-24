@@ -184,6 +184,42 @@ function computeCFull(returnsUs, returnsJp) {
   return correlationMatrixSample(combined);
 }
 
+function capPositionWeights(weights, maxAbsWeight) {
+  if (!Number.isFinite(maxAbsWeight) || maxAbsWeight <= 0) return weights;
+  let out = weights.map((w) => Math.max(-maxAbsWeight, Math.min(maxAbsWeight, w)));
+  const longSum = out.filter((w) => w > 0).reduce((a, b) => a + b, 0);
+  const shortAbsSum = out.filter((w) => w < 0).reduce((a, b) => a + Math.abs(b), 0);
+  if (longSum > 0) {
+    out = out.map((w) => (w > 0 ? w / longSum : w));
+  }
+  if (shortAbsSum > 0) {
+    out = out.map((w) => (w < 0 ? w / shortAbsSum : w));
+  }
+  return out;
+}
+
+function smoothWeights(prevWeights, currWeights, alpha) {
+  if (!prevWeights || !Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    return currWeights;
+  }
+  const n = Math.min(prevWeights.length, currWeights.length);
+  const out = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    out[i] = alpha * prevWeights[i] + (1 - alpha) * currWeights[i];
+  }
+  return out;
+}
+
+function turnover(prevWeights, currWeights) {
+  if (!prevWeights || !currWeights) return 1;
+  const n = Math.min(prevWeights.length, currWeights.length);
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    t += Math.abs(currWeights[i] - prevWeights[i]);
+  }
+  return t / 2;
+}
+
 // ============================================================================
 // 戦略実行
 // ============================================================================
@@ -239,6 +275,18 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       weights = buildPortfolio(signal, config.quantile);
     }
 
+    // シグナル平滑化＋ポジション上限
+    const smoothingAlpha = Number(config?.signalStability?.smoothingAlpha || 0);
+    weights = smoothWeights(prevWeights, weights, smoothingAlpha);
+    weights = capPositionWeights(weights, Number(config?.riskLimits?.maxAbsWeight || 1));
+
+    // ターンオーバー制限（高回転日の過剰売買を回避）
+    const maxTurnoverPerDay = Number(config?.signalStability?.maxTurnoverPerDay || 1);
+    const todayTurnover = turnover(prevWeights, weights);
+    if (prevWeights && Number.isFinite(maxTurnoverPerDay) && maxTurnoverPerDay > 0 && todayTurnover > maxTurnoverPerDay) {
+      continue;
+    }
+
     // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
     // シグナルはt-1の終値までのデータで生成されるため、t日の始値で取引しOCリターンを収益とすることが
     // 正しいアプローチ。終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
@@ -252,6 +300,12 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
 
     // 取引コスト（ターンオーバー基準。コスト 0 のときは論文の無摩擦と一致）
     strategyRet = applyTransactionCosts(strategyRet, config.transactionCosts, prevWeights, weights);
+
+    // 日次損失ストップ（簡易）
+    const dailyLossStop = Number(config?.riskLimits?.dailyLossStop || 0);
+    if (Number.isFinite(dailyLossStop) && dailyLossStop > 0) {
+      strategyRet = Math.max(strategyRet, -dailyLossStop);
+    }
     prevWeights = weights;
 
     strategyReturns.push({
@@ -433,7 +487,15 @@ async function main() {
     quantile: config.backtest.quantile,
     warmupPeriod: config.backtest.windowLength,
     transactionCosts: config.backtest.transactionCosts,
-    orderedSectorKeys: config.pca.orderedSectorKeys
+    orderedSectorKeys: config.pca.orderedSectorKeys,
+    signalStability: {
+      smoothingAlpha: config.backtest.smoothingAlpha,
+      maxTurnoverPerDay: config.backtest.maxTurnoverPerDay
+    },
+    riskLimits: {
+      maxAbsWeight: config.backtest.maxAbsWeight,
+      dailyLossStop: config.backtest.dailyLossStop
+    }
   };
 
   const resultsSub = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'PCA_SUB');

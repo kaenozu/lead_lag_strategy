@@ -20,6 +20,7 @@
     "paper": "node scripts/paper_trading.js",
     "paper-trade": "node scripts/paper_trading.js",
     "backtest": "node backtest/real.js",
+    "backtest:walkforward": "node backtest/walkforward_open_to_close.js",
     "backtest:basic": "node backtest/basic.js",
     "backtest:improved": "node backtest/improved.js",
     "backtest:risk": "node backtest/risk_managed.js",
