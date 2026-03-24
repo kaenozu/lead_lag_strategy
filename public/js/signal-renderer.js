@@ -55,11 +55,11 @@
                 <table class="signal-table">
                     <thead>
                         <tr>
-                            <th>ランク</th>
-                            <th>ティッカー</th>
-                            <th>業種</th>
-                            <th>強さの目安</th>
-                            <th>参考の値段</th>
+                            <th scope="col">ランク</th>
+                            <th scope="col">ティッカー</th>
+                            <th scope="col">業種</th>
+                            <th scope="col">強さの目安</th>
+                            <th scope="col">参考の値段</th>
                         </tr>
                     </thead>
                     <tbody>

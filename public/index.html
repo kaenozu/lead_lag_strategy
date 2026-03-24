@@ -46,6 +46,10 @@
             font-size: 24px;
             cursor: pointer;
             color: #999;
+            background: none;
+            border: none;
+            padding: 0;
+            line-height: 1;
         }
         .modal-close:hover {
             color: var(--dark);
@@ -702,7 +706,7 @@
         <header>
             <h1>📊 日米業種リードラグ戦略 - 銘柄選択システム</h1>
             <div class="header-status">
-                <button class="btn" id="helpBtn" style="padding: 10px 20px; margin-right: 10px; background: var(--light);">
+                <button class="btn" id="helpBtn" style="padding: 10px 20px; margin-right: 10px; background: var(--light);" aria-haspopup="dialog" aria-controls="helpModal">
                     ❓ 使い方
                 </button>
                 <div class="status-indicator">
@@ -720,17 +724,17 @@
                 
                 <form id="configForm">
                     <div class="form-group">
-                        <label>ウィンドウ長 (日)</label>
+                        <label for="windowLength">ウィンドウ長 (日)</label>
                         <input type="number" id="windowLength" value="60" min="20" max="200">
                     </div>
                     
                     <div class="form-group">
-                        <label>正則化強度 (λ)</label>
+                        <label for="lambdaReg">正則化強度 (λ)</label>
                         <input type="number" id="lambdaReg" value="0.9" min="0" max="1" step="0.05">
                     </div>
                     
                     <div class="form-group">
-                        <label>分位点 (q)</label>
+                        <label for="quantile">分位点 (q)</label>
                         <input type="number" id="quantile" value="0.4" min="0.1" max="0.5" step="0.05">
                     </div>
                     
@@ -796,10 +800,10 @@
                 <div id="signalOpsDecision" class="alert" style="display: none; margin-bottom: 12px; font-size: 13px;" role="status"></div>
                 <div id="signalSourceSummary" class="alert alert-info" style="display: none; margin-bottom: 12px; font-size: 13px;" role="status"></div>
 
-                <div class="tabs">
-                    <button class="tab active" data-tab="all">すべて</button>
-                    <button class="tab" data-tab="buy">買い候補</button>
-                    <button class="tab" data-tab="sell">売り候補</button>
+                <div class="tabs" role="tablist" aria-label="シグナルフィルター">
+                    <button class="tab active" data-tab="all" role="tab" aria-selected="true">すべて</button>
+                    <button class="tab" data-tab="buy" role="tab" aria-selected="false">買い候補</button>
+                    <button class="tab" data-tab="sell" role="tab" aria-selected="false">売り候補</button>
                 </div>
 
                 <details class="foldable-block" style="margin-bottom: 12px;">
@@ -834,9 +838,9 @@
 
     <!-- ヘルプモーダル -->
     <div class="modal-overlay" id="helpModal">
-        <div class="modal">
-            <span class="modal-close" onclick="closeHelp()">&times;</span>
-            <h2>📘 使い方ガイド</h2>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" tabindex="-1">
+            <button class="modal-close" aria-label="閉じる" id="helpModalClose">&times;</button>
+            <h2 id="helpModalTitle">📘 使い方ガイド</h2>
             
             <div class="help-section">
                 <h3>🎯 この画面でできること</h3>
@@ -916,12 +920,14 @@
             <div class="help-section">
                 <h3>📊 並びの意味</h3>
                 <table class="help-table">
-                    <tr>
-                        <th>並び</th>
-                        <th>色</th>
-                        <th>意味</th>
-                        <th>例</th>
-                    </tr>
+                    <thead>
+                        <tr>
+                            <th scope="col">並び</th>
+                            <th scope="col">色</th>
+                            <th scope="col">意味</th>
+                            <th scope="col">例</th>
+                        </tr>
+                    </thead>
                     <tr>
                         <td>上位 40%</td>
                         <td><span style="color: var(--success);">● 緑</span></td>
@@ -946,11 +952,13 @@
             <div class="help-section">
                 <h3>⚙️ 左の数値（上級者向け）</h3>
                 <table class="help-table">
-                    <tr>
-                        <th>名前</th>
-                        <th>はじめの値</th>
-                        <th>ざっくりした意味</th>
-                    </tr>
+                    <thead>
+                        <tr>
+                            <th scope="col">名前</th>
+                            <th scope="col">はじめの値</th>
+                            <th scope="col">ざっくりした意味</th>
+                        </tr>
+                    </thead>
                     <tr>
                         <td>ウィンドウ長</td>
                         <td>60 日</td>
@@ -985,11 +993,13 @@
             <div class="help-section">
                 <h3>📈 パフォーマンス基準</h3>
                 <table class="help-table">
-                    <tr>
-                        <th>指標</th>
-                        <th>目標値</th>
-                        <th>説明</th>
-                    </tr>
+                    <thead>
+                        <tr>
+                            <th scope="col">指標</th>
+                            <th scope="col">目標値</th>
+                            <th scope="col">説明</th>
+                        </tr>
+                    </thead>
                     <tr>
                         <td>年率リターン</td>
                         <td>5% 以上</td>
@@ -1019,12 +1029,22 @@
         const API_BASE = '/api';
 
         // ヘルプモーダル
+        let _helpPrevFocus = null;
+
         function openHelp() {
-            document.getElementById('helpModal').classList.add('active');
+            _helpPrevFocus = document.activeElement;
+            const modal = document.getElementById('helpModal');
+            modal.classList.add('active');
+            const dlg = modal.querySelector('[role="dialog"]');
+            if (dlg) dlg.focus();
         }
 
         function closeHelp() {
             document.getElementById('helpModal').classList.remove('active');
+            if (_helpPrevFocus) {
+                _helpPrevFocus.focus();
+                _helpPrevFocus = null;
+            }
         }
 
         // モーダル外クリックで閉じる
@@ -1034,8 +1054,16 @@
             }
         });
 
+        // Escape キーでモーダルを閉じる
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('helpModal').classList.contains('active')) {
+                closeHelp();
+            }
+        });
+
         // ヘルプボタン
         document.getElementById('helpBtn').addEventListener('click', openHelp);
+        document.getElementById('helpModalClose').addEventListener('click', closeHelp);
 
         // 時計更新
         function updateClock() {
@@ -1251,9 +1279,15 @@
             window.signalRenderer.renderSignals(window.appState.getSignals(), preferredTab);
             showCandidateSections(data);
             document.getElementById('exportSection').style.display = 'block';
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
             const tabEl = document.querySelector(`.tab[data-tab="${preferredTab}"]`);
-            if (tabEl) tabEl.classList.add('active');
+            if (tabEl) {
+                tabEl.classList.add('active');
+                tabEl.setAttribute('aria-selected', 'true');
+            }
 
             if (options.fromCache) {
                 setSignalCacheNote(
@@ -1576,12 +1610,38 @@
         // タブ切り替え
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.setAttribute('aria-selected', 'false');
+                });
                 tab.classList.add('active');
+                tab.setAttribute('aria-selected', 'true');
                 window.appState.setFilter(tab.dataset.tab);
                 renderSignals(window.appState.getFilter());
             });
         });
+
+        // タブの左右矢印キーナビゲーション
+        const tabList = document.querySelector('[role="tablist"]');
+        if (tabList) {
+            tabList.addEventListener('keydown', (e) => {
+                const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+                const idx = tabs.indexOf(document.activeElement);
+                if (idx === -1) return;
+                let nextTab = null;
+                if (e.key === 'ArrowRight') {
+                    nextTab = tabs[(idx + 1) % tabs.length];
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    nextTab = tabs[(idx - 1 + tabs.length) % tabs.length];
+                    e.preventDefault();
+                }
+                if (nextTab) {
+                    nextTab.focus();
+                    nextTab.click();
+                }
+            });
+        }
 
         // CSV エクスポート
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
