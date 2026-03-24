@@ -19,7 +19,7 @@ function ok(msg) {
   console.log(`  OK  ${msg}`);
 }
 
-function warn(msg) {
+function _warn(msg) {
   console.log(`  WARN  ${msg}`);
 }
 

@@ -186,14 +186,6 @@ function validateBacktestParams(body) {
 }
 
 /**
- * 数値パラメータを安全に解析（デフォルト値付き）
- */
-function parseLambdaReg(value, defaultVal) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : defaultVal;
-}
-
-/**
  * 表示用メトリクスに変換
  */
 function toDisplayMetrics(raw, dayCount) {
@@ -791,7 +783,7 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   logger.error('Unhandled error', {
     error: err.message,
     path: req.path,
