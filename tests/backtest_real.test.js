@@ -37,7 +37,6 @@ function makeReturns(nDays, valuesPerDay) {
 
 describe('runMomentumStrategy - OC リターン使用の検証', () => {
   const nDays = 130;
-  const nJp = 4;
   const window = 60;
   const quantile = 0.3;
 

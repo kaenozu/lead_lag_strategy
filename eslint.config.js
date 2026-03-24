@@ -51,6 +51,39 @@ module.exports = [
       'prefer-const': 'warn',
       'comma-dangle': ['error', 'never']
     }
+  },
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        jest: 'readonly'
+      }
+    }
+  },
+  {
+    files: ['e2e/**/*.js'],
+    languageOptions: {
+      globals: {
+        document: 'readonly'
+      }
+    }
+  },
+  {
+    files: ['lib/data/**/*.js'],
+    languageOptions: {
+      globals: {
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+        URLSearchParams: 'readonly'
+      }
+    }
   }
 ];
 

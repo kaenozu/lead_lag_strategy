@@ -10,10 +10,10 @@ const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
 
 const { LeadLagSignal } = require('../lib/pca');
-const { correlationMatrixSample } = require('../lib/math');
 const { buildPaperAlignedReturnRows } = require('../lib/data');
 const { config: appConfig } = require('../lib/config');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
+const { computeCFull } = require('./common');
 
 // ============================================================================
 // 設定（リスク管理強化）
@@ -172,12 +172,6 @@ function buildMatrices(usData, jpData) {
     jpTickers,
     appConfig.backtest.jpWindowReturn
   );
-}
-
-function computeCFull(retUs, retJp) {
-  const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
-    .map((r, i) => [...r.values, ...retJp[i].values]);
-  return correlationMatrixSample(combined);
 }
 
 // ============================================================================

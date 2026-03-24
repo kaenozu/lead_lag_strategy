@@ -19,10 +19,6 @@ function ok(msg) {
   console.log(`  OK  ${msg}`);
 }
 
-function warn(msg) {
-  console.log(`  WARN  ${msg}`);
-}
-
 function bad(msg) {
   console.log(`  NG  ${msg}`);
 }

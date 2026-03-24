@@ -12,7 +12,6 @@ const path = require('path');
 const { createLogger } = require('../lib/logger');
 const { config } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
-const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
 const { correlationMatrixSample } = require('../lib/math');
 const {
   fetchOhlcvForTickers,

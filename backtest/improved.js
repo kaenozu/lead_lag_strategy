@@ -10,8 +10,8 @@ const yahooFinance = new YahooFinance();
 const { LeadLagSignal } = require('../lib/pca');
 const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
-const { correlationMatrixSample } = require('../lib/math');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
+const { computeCFull, writeOhlcvCsvByTicker } = require('./common');
 
 // ============================================================================
 // 設定
@@ -109,16 +109,6 @@ function computeMetrics(returns, ann = 252) {
     m.Total = (m.Cumulative - 1) * 100;
     
     return m;
-}
-
-// ============================================================================
-// データ処理
-// ============================================================================
-
-function computeCFull(retUs, retJp) {
-    const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
-        .map((r, i) => [...r.values, ...retJp[i].values]);
-    return correlationMatrixSample(combined);
 }
 
 // ============================================================================
@@ -276,14 +266,8 @@ async function main() {
 
     // データ保存（後で使用）
     console.log('\n[2/5] データを保存中...');
-    for (const t in usData) {
-        const csv = 'Date,Open,High,Low,Close,Volume\n' + usData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-        fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
-    for (const t in jpData) {
-        const csv = 'Date,Open,High,Low,Close,Volume\n' + jpData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-        fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
+    writeOhlcvCsvByTicker(dataDir, usData);
+    writeOhlcvCsvByTicker(dataDir, jpData);
     console.log('  保存完了：data/*.csv');
 
     // データ処理
