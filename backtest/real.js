@@ -411,7 +411,7 @@ async function main() {
 
   // データ処理
   logger.info('Processing data...');
-  const { returnsUs, returnsJp, returnsJpOc, dates } = buildReturnMatrices(usData, jpData);
+  const { retUs: returnsUs, retJp: returnsJp, retJpOc: returnsJpOc, dates } = buildReturnMatrices(usData, jpData);
   logger.info(`Trading days: ${dates.length}, Period: ${dates[0]} ~ ${dates[dates.length - 1]}`);
 
   if (dates.length < 100) {
