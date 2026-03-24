@@ -25,8 +25,8 @@
     "backtest:risk": "node backtest/risk_managed.js",
     "test": "node scripts/test_unit.js && node --check src/server.js && node --check src/generate_signal.js && node --check backtest/improved.js && node --check backtest/real.js && node --check backtest/analysis.js && node --check scripts/doctor.js && node --check scripts/paper_trading.js && node --check scripts/workflow.js && node --check lib/data/jquants.js && node --check lib/data/alphavantage.js && node --check lib/data/sourceRecovery.js && npm run doctor:ci && jest --coverage",
     "test:watch": "jest --watch",
-    "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test:e2e": "playwright test",
     "test:e2e:monkey": "playwright test e2e/ui-monkey.spec.js",
     "test:e2e:ui": "playwright test --ui"
