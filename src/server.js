@@ -446,9 +446,6 @@ app.post('/api/backtest', async (req, res) => {
       timestamp: new Date().toISOString()
     });
     
-    // エラーコードに応じた終了コードの決定（プロセス終了時用）
-    const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
-    
     res.status(500).json({
       error: config.server.isDevelopment ? error.message : 'Backtest failed',
       code: config.server.isDevelopment ? error.code : undefined

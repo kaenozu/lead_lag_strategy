@@ -225,7 +225,7 @@ describe('lib/portfolio/metrics', () => {
     });
 
     test('日付がない場合はデフォルトラベル', () => {
-      const returns = Array.from({ length: 120 }, (_, i) => ({
+      const returns = Array.from({ length: 120 }, () => ({
         return: 0.001
       }));
 

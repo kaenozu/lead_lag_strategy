@@ -19,8 +19,7 @@ const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
   computePerformanceMetrics,
-  applyTransactionCosts,
-  computeYearlyPerformance
+  applyTransactionCosts
 } = require('../lib/portfolio');
 const { correlationMatrixSample } = require('../lib/math');
 const {
@@ -555,7 +554,7 @@ async function main() {
   fs.writeFileSync(path.join(outputDir, 'backtest_summary_real.csv'), summaryCSV);
 
   // 累積リターン
-  for (const { name, m } of summary) {
+  for (const { name } of summary) {
     const strat = name === 'MOM' ? resultsMom : name === 'PCA PLAIN' ? resultsPlain : resultsSub;
     let cum = 1;
     const cumData = strat.returns.map(r => {
