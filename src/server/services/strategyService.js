@@ -2,6 +2,10 @@
 
 const YahooFinance = require('yahoo-finance2').default;
 
+const BACKTEST_EXTRA_DAYS = 10;
+const SIGNAL_MIN_DAYS = 280;
+const SIGNAL_WINDOW_BUFFER = 160;
+
 function toDisplayMetrics(raw, dayCount) {
   return {
     AR: raw.AR * 100,
@@ -61,7 +65,7 @@ function createStrategyService(deps) {
     const chartDays = config.backtest.chartCalendarDays;
     logger.info('Running backtest', { ...backtestConfig, chartCalendarDays: chartDays, costs });
 
-    const needDays = backtestConfig.warmupPeriod + 10;
+    const needDays = backtestConfig.warmupPeriod + BACKTEST_EXTRA_DAYS;
     let [usRes, jpRes] = await Promise.all([
       fetchMarketDataForTickers(US_ETF_TICKERS, chartDays, config),
       fetchMarketDataForTickers(JP_ETF_TICKERS, chartDays, config)
@@ -232,7 +236,7 @@ function createStrategyService(deps) {
       orderedSectorKeys: config.pca.orderedSectorKeys
     };
 
-    const winDays = Math.max(280, signalConfig.windowLength + 160);
+    const winDays = Math.max(SIGNAL_MIN_DAYS, signalConfig.windowLength + SIGNAL_WINDOW_BUFFER);
     let [usRes, jpRes] = await Promise.all([
       fetchMarketDataForTickers(US_ETF_TICKERS, winDays, config),
       fetchMarketDataForTickers(JP_ETF_TICKERS, winDays, config)
@@ -339,11 +343,17 @@ function createStrategyService(deps) {
       s.priceFormatted = s.price > 0 ? `${s.price.toLocaleString()}円/口` : 'N/A';
     });
 
+    deps.runtimeState.lastSignal = {
+      at: new Date().toISOString(),
+      latestDate: dates[dates.length - 1],
+      topTickers: signals.slice(0, 5).map((s) => s.ticker)
+    };
+
     const buyCount = Math.max(1, Math.floor(JP_ETF_TICKERS.length * signalConfig.quantile));
     const buyCandidates = signals.slice(0, buyCount);
     const sellCandidates = signals.slice(-buyCount);
     const meanSig = signal.reduce((a, b) => a + b, 0) / signal.length;
-    const stdSig = Math.sqrt(signal.reduce((sq, x) => sq + Math.pow(x - meanSig, 2), 0) / signal.length);
+    const stdSig = Math.sqrt(signal.reduce((sq, x) => sq + (x - meanSig) ** 2, 0) / signal.length);
 
     return {
       status: 200,
