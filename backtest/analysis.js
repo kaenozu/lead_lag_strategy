@@ -5,7 +5,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { correlationMatrix, LeadLagSignal } = require('../lib/lead_lag_core');
+const { correlationMatrixSample: correlationMatrix } = require('../lib/math');
+const { LeadLagSignal } = require('../lib/pca');
 const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 
@@ -121,7 +122,7 @@ function analyzeSignals(retUs, retJp, retJpOc, config, sectorLabels, CFull) {
     const usWin = retUs.slice(i - config.windowLength, i).map(r => r.values);
     const jpWin = retJp.slice(i - config.windowLength, i).map(r => r.values);
     const usLatest = retUs[i - 1].values;
-    const pcaSignal = signalGen.compute(usWin, jpWin, usLatest, sectorLabels, CFull);
+    const pcaSignal = signalGen.computeSignal(usWin, jpWin, usLatest, sectorLabels, CFull);
     const retNext = retJpOc[i].values;
 
     for (let j = 0; j < nJp; j++) {
@@ -177,7 +178,7 @@ async function main() {
     const usWin = retUs.slice(i - CONFIG.windowLength, i).map(r => r.values);
     const jpWin = retJp.slice(i - CONFIG.windowLength, i).map(r => r.values);
     const usLatest = retUs[i - 1].values;
-    const signal = signalGen.compute(usWin, jpWin, usLatest, SECTOR_LABELS, CFull);
+    const signal = signalGen.computeSignal(usWin, jpWin, usLatest, SECTOR_LABELS, CFull);
     const weights = buildPortfolio(signal, CONFIG.quantile);
     const retNext = retJpOc[i].values;
     let ret = weights.reduce((s, w, j) => s + w * retNext[j], 0);

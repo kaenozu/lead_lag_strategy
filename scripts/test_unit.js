@@ -4,11 +4,8 @@
 'use strict';
 
 const assert = require('assert');
-const {
-  correlationMatrix,
-  eigenDecomposition,
-  LeadLagSignal
-} = require('../lib/lead_lag_core');
+const { correlationMatrixSample: correlationMatrix, eigenSymmetricTopK: eigenDecomposition } = require('../lib/math');
+const { LeadLagSignal } = require('../lib/pca');
 const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 
@@ -81,7 +78,7 @@ const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
   const combined = retUs.map((r, i) => [...r, ...retJp[i]]);
   const CFull = correlationMatrix(combined);
   const gen = new LeadLagSignal(config);
-  const sig = gen.compute(retUs, retJp, latest, labels, CFull);
+  const sig = gen.computeSignal(retUs, retJp, latest, labels, CFull);
   assert.strictEqual(sig.length, nJp);
   assert.ok(sig.every(Number.isFinite));
 }
