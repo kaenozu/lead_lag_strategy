@@ -277,7 +277,12 @@ async function main() {
 }
 
 main().catch(error => {
-  logger.error('Signal generation failed', { error: error.message, stack: error.stack });
+  logger.error('Signal generation failed', {
+    error: error.message,
+    stack: error.stack,
+    timestamp: new Date().toISOString()
+  });
   console.error('Error:', error.message);
-  process.exit(1);
+  const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+  process.exit(exitCode);
 });

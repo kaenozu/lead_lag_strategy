@@ -384,7 +384,12 @@ if (require.main === module) {
     const logger = createLogger('BacktestImproved');
     
     main().catch(error => {
-        logger.error('Backtest failed', { error: error.message, stack: error.stack });
-        process.exit(1);
+        logger.error('Backtest failed', {
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+        process.exit(exitCode);
     });
 }
