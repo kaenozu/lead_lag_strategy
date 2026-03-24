@@ -132,15 +132,15 @@ describe('paper parity', () => {
     const golden = JSON.parse(fs.readFileSync(EXPECTED_PATH, 'utf8'));
     // 固有値は環境（Python/NumPy バージョン）によって差異が生じるため、精度を緩和
     for (let k = 0; k < FIXTURE.nFactors; k++) {
-      expect(py.eigenvalues[k]).toBeCloseTo(golden.eigenvalues[k], 2);
+      expect(py.eigenvalues[k]).toBeCloseTo(golden.eigenvalues[k], 4);
     }
     // 相関行列の第 1 行も同様に精度を緩和
     for (let j = 0; j < golden.C_reg_first_row.length; j++) {
-      expect(py.C_reg_first_row[j]).toBeCloseTo(golden.C_reg_first_row[j], 4);
+      expect(py.C_reg_first_row[j]).toBeCloseTo(golden.C_reg_first_row[j], 6);
     }
-    // シグナルは実用上の差異がないか確認（精度 3 桁）
+    // シグナルは実用上の差異がないか確認（精度 5 桁）
     for (let i = 0; i < py.signal.length; i++) {
-      expect(py.signal[i]).toBeCloseTo(golden.signal[i], 3);
+      expect(py.signal[i]).toBeCloseTo(golden.signal[i], 5);
     }
   });
 });

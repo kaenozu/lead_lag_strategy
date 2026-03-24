@@ -319,6 +319,12 @@ function createStrategyService(deps) {
     })).sort((a, b) => b.signal - a.signal);
     signals.forEach((s, i) => { s.rank = i + 1; });
 
+    deps.runtimeState.lastSignal = {
+      at: new Date().toISOString(),
+      latestDate: dates[dates.length - 1],
+      topTickers: signals.slice(0, 5).map((s) => s.ticker)
+    };
+
     const yahooFinance = new YahooFinance();
     const quoteResults = await Promise.all(
       JP_ETF_TICKERS.map(async (ticker) => {
