@@ -42,10 +42,37 @@ const {
   isAlreadyFullYahooPath,
   configForYahooDataRecovery
 } = require('../lib/data/sourceRecovery');
+const { sendNotification } = require('../lib/ops/notifier');
+const { writeAudit, AUDIT_PATH } = require('../lib/ops/audit');
+const { ensureRole } = require('../lib/ops/rbac');
+const { assessDataQuality } = require('../lib/ops/dataQuality');
+const { buildExecutionPlan } = require('../lib/ops/executionPlanner');
+const { explainSignals } = require('../lib/ops/explain');
+const { inverseVolAllocation } = require('../lib/ops/allocation');
+const fs = require('fs');
+const path = require('path');
 
 const logger = createLogger('Server');
 
 const app = express();
+const runtimeState = {
+  lastSignal: null,
+  anomalies: [],
+  lastDataQuality: null
+};
+
+function readAuditEntries(limit = 200) {
+  const p = path.join(path.resolve(config.data.outputDir), 'audit.log');
+  if (!fs.existsSync(p)) return [];
+  const lines = fs.readFileSync(p, 'utf8').trim().split('\n').filter(Boolean);
+  return lines.slice(-limit).map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return { raw: line };
+    }
+  });
+}
 
 // ============================================
 // セキュリティ設定
@@ -758,11 +785,536 @@ app.post('/api/config', (req, res) => {
   });
 });
 
+app.get('/api/ops/summary', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const latest = runtimeState.lastSignal || null;
+  const anomalyCount = runtimeState.anomalies.length;
+  const quality = runtimeState.lastDataQuality || null;
+  res.json({
+    latestSignalAt: latest ? latest.at : null,
+    anomalyCount,
+    dataQuality: quality
+      ? {
+        ok: quality.ok,
+        badTickers: quality.badTickers
+      }
+      : null
+  });
+});
+
+app.get('/api/alerts', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
+  const p = path.join(path.resolve(config.data.outputDir), 'notifications.log');
+  if (!fs.existsSync(p)) {
+    return res.json({ alerts: [] });
+  }
+  const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-200);
+  const alerts = lines.map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return { raw: line };
+    }
+  });
+  res.json({ alerts });
+});
+
+app.get('/api/audit', ensureRole(['admin']), (_req, res) => {
+  const p = path.join(path.resolve(config.data.outputDir), 'audit.log');
+  if (!fs.existsSync(p)) {
+    return res.json({ entries: [] });
+  }
+  const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-500);
+  const entries = lines.map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return { raw: line };
+    }
+  });
+  res.json({ entries });
+});
+
+app.get('/api/presets', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
+  res.json({
+    active: config.preset.active,
+    presets: config.preset.profiles
+  });
+});
+
+app.post('/api/presets/apply', ensureRole(['trader', 'admin']), (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const p = config.preset.profiles[name];
+  if (!p) {
+    return res.status(400).json({ error: 'Unknown preset', available: Object.keys(config.preset.profiles) });
+  }
+  config.backtest.windowLength = p.windowLength;
+  config.backtest.lambdaReg = p.lambdaReg;
+  config.backtest.quantile = p.quantile;
+  config.backtest.stability.maxPositionAbs = p.maxPositionAbs;
+  config.backtest.stability.maxGrossExposure = p.maxGrossExposure;
+  config.backtest.stability.dailyLossStop = p.dailyLossStop;
+  config.preset.active = name;
+  writeAudit('preset.apply', { actorRole: req.role, name });
+  res.json({ ok: true, active: name, applied: p });
+});
+
+app.get('/api/anomalies', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
+  res.json({ items: runtimeState.anomalies.slice(-500) });
+});
+
+app.post('/api/allocation/optimize', ensureRole(['trader', 'admin']), (req, res) => {
+  const metricsByStrategy = req.body?.metricsByStrategy || {};
+  const allocation = inverseVolAllocation(metricsByStrategy);
+  writeAudit('allocation.optimize', {
+    actorRole: req.role,
+    strategyCount: Object.keys(metricsByStrategy).length
+  });
+  res.json({ allocation });
+});
+
+app.post('/api/execution/plan', ensureRole(['trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const plan = buildExecutionPlan(signals, {
+    cash: Number(req.body?.cash || config.trading.initialCapital),
+    lotSize: Number(req.body?.lotSize || 1),
+    maxPerOrder: Number(req.body?.maxPerOrder || config.trading.initialCapital),
+    minOrderValue: Number(req.body?.minOrderValue || 0)
+  });
+  writeAudit('execution.plan', {
+    actorRole: req.role,
+    orderCount: plan.totalOrders,
+    totalValue: plan.totalValue
+  });
+  res.json(plan);
+});
+
+app.post('/api/explain', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  res.json(explainSignals(signals, Number(req.body?.topN || 5)));
+});
+
 /**
  * 免責・リスク説明（Web / クライアント用）
  */
 app.get('/api/disclosure', (req, res) => {
   res.json(riskPayload());
+});
+
+app.get('/api/presets', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
+  const presets = Object.keys(config.operations.profiles || {}).map((name) => ({
+    name,
+    values: config.operations.profiles[name]
+  }));
+  res.json({ active: config.operations.activePreset, presets });
+});
+
+app.post('/api/presets/apply', ensureRole(['trader', 'admin']), (req, res) => {
+  const name = String(req.body?.name || '').trim().toLowerCase();
+  const preset = config.operations.profiles?.[name];
+  if (!preset) {
+    return res.status(400).json({ error: 'Unknown preset', available: Object.keys(config.operations.profiles || {}) });
+  }
+  config.backtest.windowLength = Number(preset.windowLength);
+  config.backtest.lambdaReg = Number(preset.lambdaReg);
+  config.backtest.quantile = Number(preset.quantile);
+  config.backtest.stability.maxPositionAbs = Number(preset.maxPositionAbs);
+  config.backtest.stability.maxGrossExposure = Number(preset.maxGrossExposure);
+  config.backtest.stability.dailyLossStop = Number(preset.dailyLossStop);
+  config.operations.activePreset = name;
+  writeAudit('preset.apply', {
+    role: req.role,
+    preset: name
+  });
+  res.json({
+    ok: true,
+    active: name,
+    config: {
+      windowLength: config.backtest.windowLength,
+      lambdaReg: config.backtest.lambdaReg,
+      quantile: config.backtest.quantile
+    }
+  });
+});
+
+app.get('/api/audit', ensureRole(['admin']), (req, res) => {
+  const p = AUDIT_PATH;
+  if (!require('fs').existsSync(p)) {
+    return res.json({ entries: [] });
+  }
+  const text = require('fs').readFileSync(p, 'utf8');
+  const lines = text.split('\n').filter(Boolean);
+  const entries = lines.slice(-200).map((line) => {
+    try { return JSON.parse(line); } catch { return { malformed: true, line }; }
+  });
+  res.json({ entries });
+});
+
+app.get('/api/alerts', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
+  const p = require('path').resolve(config.data.outputDir, 'notifications.log');
+  if (!require('fs').existsSync(p)) {
+    return res.json({ alerts: [] });
+  }
+  const text = require('fs').readFileSync(p, 'utf8');
+  const lines = text.split('\n').filter(Boolean);
+  const alerts = lines.slice(-200).map((line) => {
+    try { return JSON.parse(line); } catch { return { malformed: true, line }; }
+  });
+  res.json({ alerts });
+});
+
+app.post('/api/notifications/test', ensureRole(['admin']), async (req, res) => {
+  await sendNotification({
+    channel: config.operations.notificationChannel,
+    level: 'warn',
+    message: String(req.body?.message || 'manual notification test'),
+    context: { source: 'api/notifications/test' },
+    config
+  });
+  writeAudit('notification.test', { role: req.role });
+  res.json({ ok: true });
+});
+
+app.post('/api/execution/plan', ensureRole(['trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const cash = Number(req.body?.cash ?? config.trading.initialCapital);
+  const plan = buildExecutionPlan(signals, {
+    cash,
+    lotSize: Number(req.body?.lotSize || 1),
+    maxPerOrder: Number(req.body?.maxPerOrder || cash),
+    minOrderValue: Number(req.body?.minOrderValue || 0)
+  });
+  writeAudit('execution.plan', { role: req.role, orders: plan.totalOrders });
+  res.json(plan);
+});
+
+app.post('/api/allocation', ensureRole(['trader', 'admin']), (req, res) => {
+  const metricsByStrategy = req.body?.metricsByStrategy || {};
+  const weights = inverseVolAllocation(metricsByStrategy);
+  writeAudit('allocation.inverse_vol', { role: req.role, strategies: Object.keys(metricsByStrategy).length });
+  res.json({ weights });
+});
+
+app.post('/api/explain', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  res.json(explainSignals(signals, Number(req.body?.topN || 5)));
+});
+
+app.get('/api/monitoring', ensureRole(['viewer', 'trader', 'admin']), async (_req, res) => {
+  const days = Number(config.operations.dataQuality.lookbackDays || 180);
+  const [usRes, jpRes] = await Promise.all([
+    fetchOhlcvForTickers(US_ETF_TICKERS, days, config),
+    fetchOhlcvForTickers(JP_ETF_TICKERS, days, config)
+  ]);
+  const dqUs = assessDataQuality(usRes.byTicker);
+  const dqJp = assessDataQuality(jpRes.byTicker);
+  res.json({
+    dataQuality: {
+      us: dqUs,
+      jp: dqJp
+    },
+    strictMode: Boolean(config.ops.strictDataSource),
+    activePreset: config.operations.activePreset
+  });
+});
+
+/**
+ * 運用プリセット一覧
+ */
+app.get('/api/presets', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const presetNames = Object.keys(config.preset.profiles || {});
+  res.json({ active: config.preset.active, presets: presetNames });
+});
+
+/**
+ * 運用プリセット適用
+ */
+app.post('/api/presets/apply', ensureRole(['trader', 'admin']), (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const profiles = config.preset.profiles || {};
+  if (!name || !Object.prototype.hasOwnProperty.call(profiles, name)) {
+    return res.status(400).json({ error: 'Unknown preset', available: Object.keys(profiles) });
+  }
+  const p = profiles[name];
+  const prev = {
+    windowLength: config.backtest.windowLength,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile
+  };
+  config.backtest.windowLength = Number(p.windowLength);
+  config.backtest.lambdaReg = Number(p.lambdaReg);
+  config.backtest.quantile = Number(p.quantile);
+  config.backtest.stability.maxPositionAbs = Number(p.maxPositionAbs);
+  config.backtest.stability.maxGrossExposure = Number(p.maxGrossExposure);
+  config.backtest.stability.dailyLossStop = Number(p.dailyLossStop);
+  config.preset.active = name;
+  writeAudit('preset_applied', {
+    actor: req.headers['x-user-id'] || 'unknown',
+    role: req.role,
+    previous: prev,
+    next: {
+      windowLength: config.backtest.windowLength,
+      lambdaReg: config.backtest.lambdaReg,
+      quantile: config.backtest.quantile
+    },
+    name
+  });
+  res.json({
+    ok: true,
+    active: name,
+    backtest: {
+      windowLength: config.backtest.windowLength,
+      lambdaReg: config.backtest.lambdaReg,
+      quantile: config.backtest.quantile
+    }
+  });
+});
+
+/**
+ * 通知送信テスト
+ */
+app.post('/api/notifications/test', ensureRole(['admin']), async (req, res) => {
+  const msg = String(req.body?.message || 'manual test notification');
+  const result = await sendNotification({
+    channel: config.ops.notificationChannel,
+    message: msg,
+    level: 'warn',
+    context: { by: req.headers['x-user-id'] || 'unknown' },
+    config
+  });
+  writeAudit('notification_test', {
+    actor: req.headers['x-user-id'] || 'unknown',
+    role: req.role,
+    result
+  });
+  res.json({ ok: true, result });
+});
+
+/**
+ * 監査ログ取得
+ */
+app.get('/api/audit', ensureRole(['admin']), (req, res) => {
+  const limitRaw = parseInt(String(req.query.limit || '100'), 10);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, limitRaw)) : 100;
+  const p = AUDIT_PATH;
+  if (!require('fs').existsSync(p)) return res.json({ entries: [] });
+  const lines = require('fs').readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-limit);
+  const entries = lines.map((l) => {
+    try { return JSON.parse(l); } catch { return null; }
+  }).filter(Boolean);
+  res.json({ entries });
+});
+
+/**
+ * データ品質レポート（直近取得データ）
+ */
+app.post('/api/data-quality/check', ensureRole(['viewer', 'trader', 'admin']), async (req, res) => {
+  const days = Math.max(30, Number(req.body?.days || 120));
+  const [usRes, jpRes] = await Promise.all([
+    fetchOhlcvForTickers(US_ETF_TICKERS, days, config),
+    fetchOhlcvForTickers(JP_ETF_TICKERS, days, config)
+  ]);
+  const reportUs = assessDataQuality(usRes.byTicker);
+  const reportJp = assessDataQuality(jpRes.byTicker);
+  const ok = reportUs.ok && reportJp.ok;
+  if (!ok) {
+    await sendNotification({
+      channel: config.ops.notificationChannel,
+      level: 'warn',
+      message: 'Data quality warning',
+      context: {
+        usBad: reportUs.badTickers,
+        jpBad: reportJp.badTickers
+      },
+      config
+    });
+  }
+  res.json({ ok, us: reportUs, jp: reportJp });
+});
+
+/**
+ * 執行プラン生成（シグナル→注文）
+ */
+app.post('/api/execution/plan', ensureRole(['trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const plan = buildExecutionPlan(signals, {
+    cash: Number(req.body?.cash || config.trading.initialCapital),
+    lotSize: Number(req.body?.lotSize || 1),
+    maxPerOrder: Number(req.body?.maxPerOrder || config.trading.initialCapital * 0.2),
+    minOrderValue: Number(req.body?.minOrderValue || 1000)
+  });
+  writeAudit('execution_plan', {
+    actor: req.headers['x-user-id'] || 'unknown',
+    role: req.role,
+    totalOrders: plan.totalOrders,
+    totalValue: plan.totalValue
+  });
+  res.json(plan);
+});
+
+/**
+ * 複数戦略配分（逆ボラ）
+ */
+app.post('/api/allocation', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const metrics = req.body?.metricsByStrategy || {};
+  const weights = inverseVolAllocation(metrics);
+  res.json({ weights });
+});
+
+/**
+ * シグナル説明（寄与）
+ */
+app.post('/api/explain', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const topN = Math.max(1, Math.min(20, Number(req.body?.topN || 5)));
+  res.json(explainSignals(signals, topN));
+});
+
+/**
+ * 運用プリセット一覧
+ */
+app.get('/api/presets', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const presets = Object.entries(config.operations?.profiles || {}).map(([name, p]) => ({
+    name,
+    windowLength: p.windowLength,
+    lambdaReg: p.lambdaReg,
+    quantile: p.quantile
+  }));
+  res.json({ active: config.preset?.active || null, presets });
+});
+
+/**
+ * 運用プリセット適用
+ */
+app.post('/api/presets/apply', ensureRole(['trader', 'admin']), (req, res) => {
+  const name = String(req.body?.name || '').trim().toLowerCase();
+  const profile = config.operations?.profiles?.[name];
+  if (!profile) {
+    return res.status(400).json({
+      error: 'Unknown preset',
+      available: Object.keys(config.operations?.profiles || {})
+    });
+  }
+  config.backtest.windowLength = Number(profile.windowLength);
+  config.backtest.lambdaReg = Number(profile.lambdaReg);
+  config.backtest.quantile = Number(profile.quantile);
+  config.backtest.stability.maxPositionAbs = Number(profile.maxPositionAbs);
+  config.backtest.stability.maxGrossExposure = Number(profile.maxGrossExposure);
+  config.backtest.stability.dailyLossStop = Number(profile.dailyLossStop);
+  if (config.preset) config.preset.active = name;
+  writeAudit('preset.apply', {
+    actor: req.userRole,
+    preset: name,
+    path: req.path
+  });
+  res.json({
+    ok: true,
+    active: name,
+    applied: profile
+  });
+});
+
+/**
+ * 監査ログ取得
+ */
+app.get('/api/audit', ensureRole(['admin']), (req, res) => {
+  const limitRaw = parseInt(String(req.query.limit || '100'), 10);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, limitRaw)) : 100;
+  res.json({ path: AUDIT_PATH, entries: readAuditEntries(limit) });
+});
+
+/**
+ * 通知履歴（簡易）
+ */
+app.get('/api/alerts', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const logPath = path.join(path.resolve(config.data.outputDir), 'notifications.log');
+  if (!fs.existsSync(logPath)) return res.json({ alerts: [] });
+  const rows = fs
+    .readFileSync(logPath, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .slice(-200)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { raw: line };
+      }
+    });
+  res.json({ alerts: rows });
+});
+
+/**
+ * データ品質チェック
+ */
+app.get('/api/ops/data-quality', ensureRole(['trader', 'admin']), async (req, res) => {
+  const daysRaw = parseInt(String(req.query.days || config.operations.dataQuality.lookbackDays), 10);
+  const days = Number.isFinite(daysRaw) ? Math.max(30, Math.min(3000, daysRaw)) : config.operations.dataQuality.lookbackDays;
+  const [usRes, jpRes] = await Promise.all([
+    fetchOhlcvForTickers(US_ETF_TICKERS, days, config),
+    fetchOhlcvForTickers(JP_ETF_TICKERS, days, config)
+  ]);
+  const quality = assessDataQuality({ ...usRes.byTicker, ...jpRes.byTicker });
+  if (!quality.ok) {
+    await sendNotification({
+      channel: config.operations.notificationChannel,
+      level: 'warn',
+      message: 'Data quality warning',
+      context: { badTickers: quality.badTickers },
+      config
+    });
+  }
+  res.json(quality);
+});
+
+/**
+ * 執行プラン（シグナル→注文）
+ */
+app.post('/api/execution/plan', ensureRole(['trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const cash = Number(req.body?.cash ?? config.trading.initialCapital);
+  const plan = buildExecutionPlan(signals, {
+    cash,
+    lotSize: req.body?.lotSize ?? 1,
+    maxPerOrder: req.body?.maxPerOrder ?? cash,
+    minOrderValue: req.body?.minOrderValue ?? 0
+  });
+  writeAudit('execution.plan', {
+    actor: req.userRole,
+    path: req.path,
+    orders: plan.totalOrders
+  });
+  res.json(plan);
+});
+
+/**
+ * 戦略配分（逆ボラ）
+ */
+app.post('/api/allocation/optimize', ensureRole(['trader', 'admin']), (req, res) => {
+  const metricsByStrategy = req.body?.metricsByStrategy || {};
+  const weights = inverseVolAllocation(metricsByStrategy);
+  writeAudit('allocation.optimize', {
+    actor: req.userRole,
+    strategies: Object.keys(metricsByStrategy).length
+  });
+  res.json({ weights });
+});
+
+/**
+ * 説明性
+ */
+app.post('/api/explain', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  res.json(explainSignals(signals, req.body?.topN ?? 5));
+});
+
+/**
+ * 監視サマリ
+ */
+app.get('/api/monitoring', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  res.json({
+    strictDataSource: config.operations.strictDataSource,
+    notificationChannel: config.operations.notificationChannel,
+    auditPath: AUDIT_PATH
+  });
 });
 
 /**

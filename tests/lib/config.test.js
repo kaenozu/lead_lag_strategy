@@ -29,6 +29,9 @@ describe('lib/config', () => {
       expect(config.backtest.transactionCosts.slippage).toBeDefined();
       expect(config.backtest.transactionCosts.commission).toBeDefined();
       expect(config.backtest.rollingReportWindow).toBeGreaterThan(0);
+      expect(config.backtest.execution).toBeDefined();
+      expect(config.backtest.stability).toBeDefined();
+      expect(config.backtest.walkforward).toBeDefined();
     });
 
     test('取引設定', () => {
@@ -59,6 +62,9 @@ describe('lib/config', () => {
       expect(['yahoo', 'csv', 'jquants']).toContain(config.data.mode);
       expect(['yahoo', 'alphavantage']).toContain(config.data.usOhlcvProvider);
       expect(['cc', 'oc']).toContain(config.backtest.jpWindowReturn);
+      expect(config.operations).toBeDefined();
+      expect(config.ops).toBeDefined();
+      expect(config.preset).toBeDefined();
     });
 
     test('getDataSourcesForUi は保存設定＋米日の実行時経路を返す', () => {
