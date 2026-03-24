@@ -25,7 +25,6 @@ async function readJsonLines(filePath, limit = 200) {
 function registerOpsRoutes(app, deps) {
   const {
     config,
-    logger,
     ensureRole,
     writeAudit,
     AUDIT_PATH,

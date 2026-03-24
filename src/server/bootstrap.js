@@ -7,7 +7,6 @@ const { ipKeyGenerator } = rateLimit;
 const { createLogger } = require('../../lib/logger');
 const {
   config,
-  validate,
   getDataSourcesForUi,
   applyDataSourceSettings,
   getDataSourceUpdateErrors
