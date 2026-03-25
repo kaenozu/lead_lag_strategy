@@ -7,9 +7,7 @@ const { ipKeyGenerator } = rateLimit;
 const { createLogger } = require('../../lib/logger');
 const {
   config,
-  getDataSourcesForUi,
-  applyDataSourceSettings,
-  getDataSourceUpdateErrors
+  getDataSourcesForUi
 } = require('../../lib/config');
 const { LeadLagSignal } = require('../../lib/pca');
 const {
@@ -46,6 +44,7 @@ const { registerStrategyRoutes } = require('./routes/strategyRoutes');
 const { registerSystemRoutes } = require('./routes/systemRoutes');
 const { registerConfigRoutes } = require('./routes/configRoutes');
 const { registerOpsRoutes } = require('./routes/opsRoutes');
+const { registerPaperRoutes } = require('./routes/paperRoutes');
 const { validateBacktestParams, validateConfigUpdateParams } = require('./modules/paramValidation');
 const { getUiConfigPayload, updateBacktestConfig } = require('./modules/configStore');
 
@@ -140,14 +139,12 @@ function createApp() {
     assessDataQuality,
     getDataSourcesForUi,
     getUiConfigPayload,
-    getDataSourceUpdateErrors,
-    applyDataSourceSettings,
     updateBacktestConfig,
     runtimeState,
     pushAnomaly
   };
 
-  const strategyService = createStrategyService(deps);
+  const strategyService = createStrategyService({ ...deps, writeAudit });
   const routeDeps = { ...deps, strategyService };
 
   // Register Routes
@@ -160,6 +157,7 @@ function createApp() {
   registerSystemRoutes(app, routeDeps);
   registerConfigRoutes(app, routeDeps);
   registerOpsRoutes(app, routeDeps);
+  registerPaperRoutes(app, routeDeps);
 
   // Global Error Handling
   app.use((req, res) => {

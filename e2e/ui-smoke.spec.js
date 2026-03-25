@@ -13,6 +13,38 @@ const backtestFixture = JSON.parse(
 
 const artifactsDir = path.join(__dirname, '..', 'e2e-artifacts');
 
+async function mockSidePanelApis(page) {
+  await page.route('**/api/paper/verification', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ skipped: true, reason: 'e2e mock' })
+    });
+  });
+  await page.route('**/api/walkforward/summary', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, message: 'e2e mock' })
+    });
+  });
+  await page.route('**/api/operating-rules', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ path: '/mock', rules: { customLines: [] } })
+    });
+  });
+
+  await page.route('**/api/paper/order-csv', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/csv; charset=utf-8',
+      body: 'Side,Ticker,Qty,EstValue,RefPrice\nBUY,1617.T,100,100000,1000\n'
+    });
+  });
+}
+
 test.describe('本番 UI（静的 + API モック）', () => {
   test.beforeAll(() => {
     fs.mkdirSync(artifactsDir, { recursive: true });
@@ -55,6 +87,8 @@ test.describe('本番 UI（静的 + API モック）', () => {
         body: JSON.stringify(backtestFixture)
       });
     });
+
+    await mockSidePanelApis(page);
 
     await page.goto('/');
 
@@ -121,6 +155,8 @@ test.describe('本番 UI（静的 + API モック）', () => {
         body: JSON.stringify(signalFixture)
       });
     });
+
+    await mockSidePanelApis(page);
 
     await page.goto('/');
     await expect(page.locator('#signalContent')).toContainText('時間外のため自動取得しません');

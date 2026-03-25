@@ -8,8 +8,6 @@ function registerConfigRoutes(app, deps) {
     getDataSourcesForUi,
     getUiConfigPayload,
     validateConfigUpdateParams,
-    getDataSourceUpdateErrors,
-    applyDataSourceSettings,
     updateBacktestConfig
   } = deps;
 
@@ -21,30 +19,16 @@ function registerConfigRoutes(app, deps) {
     }));
   });
 
+  /** データ取得（日本・米国）は起動時に自動決定。POST ではバックテスト用パラメータのみ変更可能 */
   app.post('/api/config', (req, res) => {
-    const { windowLength, lambdaReg, quantile } = req.body;
-    const dataMode = req.body.dataMode ?? req.body.mode;
-    const usOhlcvProvider = req.body.usOhlcvProvider ?? req.body.us_ohlcv_provider;
-    const errors = [];
-
+    const body = req.body || {};
+    const { windowLength, lambdaReg, quantile } = body;
     const validation = validateConfigUpdateParams({ windowLength, lambdaReg, quantile });
-    errors.push(...validation.errors);
 
-    errors.push(
-      ...getDataSourceUpdateErrors({
-        mode: dataMode,
-        usOhlcvProvider
-      })
-    );
-
-    if (errors.length > 0) {
-      return res.status(400).json({ error: 'Invalid parameters', details: errors });
+    if (validation.errors.length > 0) {
+      return res.status(400).json({ error: 'Invalid parameters', details: validation.errors });
     }
 
-    applyDataSourceSettings({
-      mode: dataMode,
-      usOhlcvProvider
-    });
     updateBacktestConfig(validation.updates);
 
     logger.info('Configuration updated via API', {
@@ -65,4 +49,3 @@ function registerConfigRoutes(app, deps) {
 module.exports = {
   registerConfigRoutes
 };
-

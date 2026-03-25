@@ -1,5 +1,14 @@
 'use strict';
 
+/**
+ * 画面の「買い候補」に相当する銘柄だけを等金額ロングし、
+ * その日本取引日の OC（始値→終値）リターンで損益を積むシミュレーション。
+ *
+ * 注意:
+ * - 標準の npm run backtest（PCA_SUB 等）はロング・ショート両建て想定で別物です。
+ * - 実際の寄り付き・約定・手数料・税と一致しません（.env の BACKTEST_* コストのみ）。
+ */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -11,7 +20,7 @@ const { correlationMatrixSample } = require('../lib/math');
 const { fetchOhlcvDateRangeForTickers, buildPaperAlignedReturnRows } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 
-const logger = createLogger('WalkForwardOC');
+const logger = createLogger('LongOnlyOC');
 
 function toCCMap(byTicker) {
   const out = {};
@@ -53,12 +62,12 @@ async function main() {
   const endDate = config.data.endDate;
   const costs = config.backtest.transactionCosts;
   const exec = config.backtest.execution;
-  const stability = config.backtest.stability;
 
-  logger.info('Walk-forward OC validation started', {
+  logger.info('Long-only OC (buy candidates, same-day close) backtest', {
     startDate,
     endDate,
-    windowLength: config.backtest.windowLength
+    windowLength: config.backtest.windowLength,
+    quantile: config.backtest.quantile
   });
 
   const [usRes, jpRes] = await Promise.all([
@@ -128,27 +137,8 @@ async function main() {
       config.sectorLabels,
       CFull
     );
-    let weights = buildPortfolio(signal, config.backtest.quantile);
-
-    const prevForBlend = prevWeights || new Array(weights.length).fill(0);
-    const minEdge = Number(stability.minSignalAbs || 0);
-    const active = signal.filter((x) => Math.abs(x) >= minEdge).length;
-    if (active < Math.max(2, Math.floor(weights.length * 0.2))) {
-      weights = prevForBlend.slice();
-    } else {
-      const t = Math.max(0, Math.min(1, Number(stability.rebalanceBuffer || 0)));
-      weights = weights.map((w, idx) => (1 - t) * w + t * prevForBlend[idx]);
-    }
-
-    const gross = weights.reduce((s, w) => s + Math.abs(w), 0);
-    if (gross > stability.maxGrossExposure && gross > 0) {
-      const k = stability.maxGrossExposure / gross;
-      weights = weights.map((w) => w * k);
-    }
-    const per = Math.max(0, stability.maxPositionAbs);
-    if (per > 0) {
-      weights = weights.map((w) => Math.max(-per, Math.min(per, w)));
-    }
+    const fullW = buildPortfolio(signal, config.backtest.quantile);
+    const weights = fullW.map((w) => Math.max(0, w));
 
     let ret = 0;
     for (let j = 0; j < weights.length; j++) ret += weights[j] * retJpOc[i].values[j];
@@ -166,23 +156,28 @@ async function main() {
   const gains = returns.filter((r) => r > 0).reduce((a, b) => a + b, 0);
   const pf = losses > 0 ? gains / losses : Infinity;
 
-  console.log('\n=== Walk-forward (Open->Close) ===');
-  console.log(`Period: ${dates[0]} .. ${dates[dates.length - 1]}`);
-  console.log(`Trades: ${returns.length}`);
-  console.log(`AR: ${(m.AR * 100).toFixed(2)}%`);
-  console.log(`RISK: ${(m.RISK * 100).toFixed(2)}%`);
-  console.log(`MDD: ${(m.MDD * 100).toFixed(2)}%`);
-  console.log(`Total: ${((m.Cumulative - 1) * 100).toFixed(2)}%`);
-  console.log(`WinRate: ${(winRate * 100).toFixed(2)}%`);
-  console.log(`AvgRet/day: ${(avg * 100).toFixed(3)}%`);
+  console.log('\n=== 買い候補のみ・同日 OC（始値→終値）シミュレーション ===');
+  console.log('（ロングショート版のバックテストとは別系列です）');
+  console.log(`期間: ${dates[warmup]} .. ${dates[dates.length - 1]}`);
+  console.log(`営業日数: ${returns.length}`);
+  console.log(`年率リターン AR: ${(m.AR * 100).toFixed(2)}%`);
+  console.log(`年率ボラ RISK: ${(m.RISK * 100).toFixed(2)}%`);
+  console.log(`最大 DD: ${(m.MDD * 100).toFixed(2)}%`);
+  console.log(`累積（複利）: ${((m.Cumulative - 1) * 100).toFixed(2)}%`);
+  console.log(`勝率: ${(winRate * 100).toFixed(2)}%`);
+  console.log(`1 日平均: ${(avg * 100).toFixed(3)}%`);
   console.log(`ProfitFactor: ${Number.isFinite(pf) ? pf.toFixed(3) : 'Infinity'}`);
+  console.log(
+    `\n金額イメージ: 元本 100 万円なら累積損益 ≈ ${(1000000 * (m.Cumulative - 1)).toLocaleString('ja-JP')} 円（税・実際の約定は未反映）`
+  );
 
   const outDir = path.resolve(config.data.outputDir || './results');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-  const wfPayload = {
+  const payload = {
     at: new Date().toISOString(),
-    script: 'walkforward_open_to_close',
-    periodStart: dates[0],
+    script: 'long_only_oc',
+    description: 'Long-only equal weight on buy quantile; JP open-to-close return same day',
+    periodStart: dates[warmup],
     periodEnd: dates[dates.length - 1],
     tradeDays: returns.length,
     metrics: {
@@ -194,17 +189,21 @@ async function main() {
       winRate,
       avgRetPerDay: avg,
       profitFactor: Number.isFinite(pf) ? pf : null
+    },
+    notionals: {
+      initialJPY: 1000000,
+      approxPnlJPY: Math.round(1000000 * (m.Cumulative - 1))
     }
   };
   fs.writeFileSync(
-    path.join(outDir, 'walkforward_oc_summary.json'),
-    JSON.stringify(wfPayload, null, 2),
+    path.join(outDir, 'long_only_oc_summary.json'),
+    JSON.stringify(payload, null, 2),
     'utf8'
   );
-  console.log(`\nWrote ${path.join(outDir, 'walkforward_oc_summary.json')}`);
+  console.log(`\n保存: ${path.join(outDir, 'long_only_oc_summary.json')}`);
 }
 
 main().catch((e) => {
-  logger.error('Walk-forward failed', { error: e.message, stack: e.stack });
+  logger.error('Long-only OC backtest failed', { error: e.message, stack: e.stack });
   process.exit(1);
 });

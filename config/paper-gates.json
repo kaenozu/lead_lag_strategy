@@ -1,0 +1,8 @@
+{
+  "minJournalEntries": 5,
+  "minUniqueSignalDates": 3,
+  "minRebalances": 2,
+  "maxBacktestAgeDays": 0,
+  "requireBacktestSummaryFile": false,
+  "notes": "maxBacktestAgeDays=0 でバックテスト鮮度チェック無効。実弾前は 30〜90 などを検討。"
+}

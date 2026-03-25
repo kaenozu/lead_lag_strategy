@@ -25,6 +25,7 @@ const {
 } = require('../lib/data/sourceRecovery');
 
 const logger = createLogger('SignalGenerator');
+const { writeAudit } = require('../lib/ops/audit');
 
 /**
  * コマンドライン引数を解析
@@ -242,6 +243,16 @@ async function main() {
   console.log(`  最大: ${(Math.max(...signal) * 1000).toFixed(4)}`);
   console.log(`  最小: ${(Math.min(...signal) * 1000).toFixed(4)}`);
 
+  const latestDate = retUs.length ? retUs[retUs.length - 1].date : null;
+  writeAudit('signal.cli', {
+    latestDate,
+    windowLength: options.windowLength,
+    lambdaReg: options.lambdaReg,
+    quantile: options.quantile,
+    buyTickers: buyCandidates.map((s) => s.ticker),
+    sellTickers: sellCandidates.map((s) => s.ticker)
+  });
+
   // 結果保存
   if (options.save) {
     const outputDir = config.data.outputDir;
@@ -251,6 +262,7 @@ async function main() {
 
     const result = {
       timestamp: new Date().toISOString(),
+      latestDate,
       config: options,
       signals,
       buyCandidates,

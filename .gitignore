@@ -26,6 +26,9 @@ data/cache/
 .DS_Store
 Thumbs.db
 
+# ローカル用の別リポジトリ（誤コミット防止）
+pro/
+
 # IDE
 .vscode/
 .idea/
