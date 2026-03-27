@@ -3,7 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { evaluatePaperGates, defaultGates } = require('../../../lib/paper/gates');
+const { evaluatePaperGates, defaultGates, loadPaperGates } = require('../../../lib/paper/gates');
 
 describe('lib/paper/gates', () => {
   test('evaluatePaperGates passes when thresholds met', () => {
@@ -54,5 +54,16 @@ describe('lib/paper/gates', () => {
     };
     const r = evaluatePaperGates(stats, gates, outDir);
     expect(r.allPass).toBe(true);
+  });
+
+  test('loadPaperGates warns and falls back to defaults when file is missing', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const gates = loadPaperGates(path.join(os.tmpdir(), 'no-such-paper-gates.json'));
+      expect(gates).toEqual(defaultGates());
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

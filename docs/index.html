@@ -383,6 +383,79 @@
         
         .candidate-card .signal.positive { color: var(--success); }
         .candidate-card .signal.negative { color: var(--danger); }
+
+        .budget-summary {
+            margin-top: 20px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8fbff, #eef6ff);
+            border: 1px solid #d7e7ff;
+            border-radius: 12px;
+        }
+
+        .budget-summary h3 {
+            font-size: 16px;
+            color: var(--dark);
+            margin-bottom: 12px;
+        }
+
+        .budget-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .budget-metric {
+            background: white;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border: 1px solid #e7eef7;
+        }
+
+        .budget-metric .label {
+            display: block;
+            font-size: 12px;
+            color: #667;
+            margin-bottom: 6px;
+        }
+
+        .budget-metric .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        .budget-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .budget-table th,
+        .budget-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eaeaea;
+            text-align: left;
+        }
+
+        .budget-table th {
+            background: rgba(33, 150, 243, 0.08);
+            font-size: 13px;
+            color: #445;
+        }
+
+        .budget-table td.numeric {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .budget-note {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5b6470;
+            line-height: 1.6;
+        }
         
         .loading {
             text-align: center;
@@ -593,6 +666,13 @@
     </div>
 
     <!-- ヘルプモーダル -->
+                <div id="budgetScenario" class="budget-summary" style="display: none;">
+                    <h3>💰 予算シミュレーション</h3>
+                    <div id="budgetMetrics" class="budget-metrics"></div>
+                    <div id="budgetScenarioTable"></div>
+                    <div id="budgetScenarioNote" class="budget-note"></div>
+                </div>
+
     <div class="modal-overlay" id="helpModal">
         <div class="modal">
             <span class="modal-close" onclick="closeHelp()">&times;</span>
@@ -844,6 +924,8 @@
                         <div class="alert alert-error">❌ エラー：${data.error}</div>
                     `;
                     document.getElementById('exportSection').style.display = 'none';
+                    const budgetScenario = document.getElementById('budgetScenario');
+                    if (budgetScenario) budgetScenario.style.display = 'none';
                 } else {
                     currentSignals = data;
                     currentFilter = 'buy';
@@ -975,6 +1057,127 @@
         }
 
         // タブ切り替え
+        function buildBestPurchasePlan(signals, totalCapital) {
+            const candidates = (signals || [])
+                .filter(s => Number.isFinite(Number(s.price)) && Number(s.price) > 0)
+                .map(s => ({
+                    ...s,
+                    price: Number(s.price),
+                    signal: Number(s.signal || 0)
+                }));
+
+            let best = {
+                picks: [],
+                cost: 0,
+                signalSum: 0
+            };
+
+            const totalMasks = 1 << candidates.length;
+            for (let mask = 0; mask < totalMasks; mask++) {
+                let cost = 0;
+                let signalSum = 0;
+                const picks = [];
+
+                for (let i = 0; i < candidates.length; i++) {
+                    if (mask & (1 << i)) {
+                        const item = candidates[i];
+                        cost += item.price;
+                        signalSum += item.signal;
+                        picks.push(item);
+                    }
+                }
+
+                if (cost > totalCapital) continue;
+                if (
+                    signalSum > best.signalSum ||
+                    (signalSum === best.signalSum && cost > best.cost)
+                ) {
+                    best = { picks, cost, signalSum };
+                }
+            }
+
+            return best;
+        }
+
+        function formatYen(value) {
+            return `${Math.round(value).toLocaleString()}円`;
+        }
+
+        function renderBudgetScenario() {
+            const budgetEl = document.getElementById('budgetScenario');
+            const metricsEl = document.getElementById('budgetMetrics');
+            const tableEl = document.getElementById('budgetScenarioTable');
+            const noteEl = document.getElementById('budgetScenarioNote');
+            if (!budgetEl || !metricsEl || !tableEl || !noteEl) return;
+
+            const buyCandidates = currentSignals.buyCandidates || [];
+            const pricedCandidates = buyCandidates.filter(s => Number.isFinite(Number(s.price)) && Number(s.price) > 0);
+            if (pricedCandidates.length === 0) {
+                budgetEl.style.display = 'none';
+                return;
+            }
+
+            const capital = getCapitalAmount();
+            const allCost = pricedCandidates.reduce((sum, s) => sum + Number(s.price), 0);
+            const allSignal = pricedCandidates.reduce((sum, s) => sum + Number(s.signal || 0), 0);
+            const bestPlan = buildBestPurchasePlan(pricedCandidates, capital);
+            const remaining = capital - bestPlan.cost;
+
+            budgetEl.style.display = 'block';
+            metricsEl.innerHTML = `
+                <div class="budget-metric">
+                    <span class="label">予算</span>
+                    <div class="value">${formatYen(capital)}</div>
+                </div>
+                <div class="budget-metric">
+                    <span class="label">全推奨購入額</span>
+                    <div class="value">${formatYen(allCost)}</div>
+                </div>
+                <div class="budget-metric">
+                    <span class="label">最適購入額</span>
+                    <div class="value">${formatYen(bestPlan.cost)}</div>
+                </div>
+                <div class="budget-metric">
+                    <span class="label">残額</span>
+                    <div class="value">${formatYen(remaining)}</div>
+                </div>
+            `;
+
+            const rows = bestPlan.picks.map((s, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${s.ticker}</td>
+                    <td>${s.name || s.ticker}</td>
+                    <td class="numeric">${formatYen(s.price)}</td>
+                    <td class="numeric">${(Number(s.signal || 0) * 1000).toFixed(2)}</td>
+                </tr>
+            `).join('');
+
+            tableEl.innerHTML = `
+                <table class="budget-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Ticker</th>
+                            <th>Name</th>
+                            <th class="numeric">Price</th>
+                            <th class="numeric">Signal ×1000</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="5">予算内で買える銘柄がありません</td></tr>'}
+                    </tbody>
+                </table>
+            `;
+
+            noteEl.innerHTML = `
+                全推奨購入額は <strong>${formatYen(allCost)}</strong> です。
+                予算内での最適案は <strong>${bestPlan.picks.length} 銘柄</strong>、
+                合計シグナルは <strong>${bestPlan.signalSum.toFixed(4)}</strong> 、
+                使い切れなかった予算は <strong>${formatYen(remaining)}</strong> です。
+            `;
+        }
+
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -988,6 +1191,7 @@
         document.getElementById('recalcBtn').addEventListener('click', () => {
             if (currentSignals.length > 0) {
                 renderSignals(currentFilter);
+                renderBudgetScenario();
             }
         });
 
@@ -1047,6 +1251,7 @@
                     currentFilter = 'all';
                     renderSignals('all');
                     showCandidateSections(data);
+                    renderBudgetScenario();
                     document.getElementById('exportSection').style.display = 'block';
                 }
             } catch (e) {
@@ -1054,6 +1259,8 @@
                     <div class="alert alert-error">❌ エラー：${e.message}</div>
                 `;
                 document.getElementById('exportSection').style.display = 'none';
+                const budgetScenario = document.getElementById('budgetScenario');
+                if (budgetScenario) budgetScenario.style.display = 'none';
             } finally {
                 btn.disabled = false;
                 btn.textContent = '🚀 シグナル生成';
@@ -1198,6 +1405,7 @@
 
             html += '</tbody></table>';
             document.getElementById('signalContent').innerHTML = html;
+            renderBudgetScenario();
         }
         
         // 候補セクション表示
