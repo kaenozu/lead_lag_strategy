@@ -109,15 +109,7 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
 
     if (strategy === 'DOUBLE_SORT') {
       // ダブルソート：モメンタムと PCA を組み合わせ
-      const momentum = new Array(nJp).fill(0);
-      for (let j = i - config.windowLength; j < i; j++) {
-        for (let k = 0; k < nJp; k++) {
-          momentum[k] += returnsJp[j].values[k];
-        }
-      }
-      for (let k = 0; k < nJp; k++) {
-        momentum[k] /= config.windowLength;
-      }
+      const momentum = averageMomentumWindow(returnsJp, i - config.windowLength, i, nJp);
 
       const pcaSignal = signalGenerator.computeSignal(
         retUsWindow, retJpWindow, retUsLatest, sectorLabels, CFull
@@ -146,7 +138,8 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     const maxTurnoverPerDay = Number(config?.signalStability?.maxTurnoverPerDay || 1);
     const todayTurnover = turnover(prevWeights, weights);
     if (prevWeights && Number.isFinite(maxTurnoverPerDay) && maxTurnoverPerDay > 0 && todayTurnover > maxTurnoverPerDay) {
-      continue;
+      // 売買のみ抑制し、当日の損益計上は継続する（前日ポジションを維持）
+      weights = prevWeights;
     }
 
     // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
@@ -155,10 +148,7 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     const retNext = returnsJpOc[i].values;
 
     // ポートフォオリターン計算
-    let strategyRet = 0;
-    for (let j = 0; j < nJp; j++) {
-      strategyRet += weights[j] * retNext[j];
-    }
+    let strategyRet = weightedReturn(weights, retNext);
 
     // 取引コスト（ターンオーバー基準。コスト 0 のときは論文の無摩擦と一致）
     strategyRet = applyTransactionCosts(strategyRet, config.transactionCosts, prevWeights, weights);
@@ -190,25 +180,14 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   let prevWeights = null;
 
   for (let i = window; i < returnsJpOc.length; i++) {
-    const momentum = new Array(nJp).fill(0);
-    for (let j = i - window; j < i; j++) {
-      for (let k = 0; k < nJp; k++) {
-        momentum[k] += returnsJp[j].values[k];
-      }
-    }
-    for (let k = 0; k < nJp; k++) {
-      momentum[k] /= window;
-    }
+    const momentum = averageMomentumWindow(returnsJp, i - window, i, nJp);
 
     const weights = buildPortfolio(momentum, quantile);
     // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
     // 終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
     const retNext = returnsJpOc[i].values;
 
-    let strategyRet = 0;
-    for (let j = 0; j < nJp; j++) {
-      strategyRet += weights[j] * retNext[j];
-    }
+    let strategyRet = weightedReturn(weights, retNext);
 
     strategyRet = applyTransactionCosts(strategyRet, transactionCosts, prevWeights, weights);
     prevWeights = weights;
@@ -221,6 +200,28 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   }
 
   return { returns: strategyReturns, dates };
+}
+
+function averageMomentumWindow(returnsJp, start, end, nJp) {
+  const momentum = new Array(nJp).fill(0);
+  const window = end - start;
+  for (let j = start; j < end; j++) {
+    for (let k = 0; k < nJp; k++) {
+      momentum[k] += returnsJp[j].values[k];
+    }
+  }
+  for (let k = 0; k < nJp; k++) {
+    momentum[k] /= window;
+  }
+  return momentum;
+}
+
+function weightedReturn(weights, returns) {
+  let result = 0;
+  for (let i = 0; i < weights.length; i++) {
+    result += weights[i] * returns[i];
+  }
+  return result;
 }
 
 // ============================================================================
@@ -236,8 +237,8 @@ async function main() {
     logger.warn('Configuration warnings', { warnings: configErrors });
   }
 
-  const dataDir = path.join(__dirname, 'data');
-  const outputDir = path.join(__dirname, 'results');
+  const dataDir = path.join(__dirname, '..', 'data');
+  const outputDir = path.join(__dirname, '..', 'results');
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });

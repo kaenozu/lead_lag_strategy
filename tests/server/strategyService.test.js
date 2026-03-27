@@ -1,0 +1,214 @@
+'use strict';
+
+const { __internal } = require('../../src/server/services/strategyService');
+
+const { computeOnePickTop1Backtest } = __internal;
+const { computeDailyBuyCandidatesBacktest } = __internal;
+const { computeDailyLongShortCandidatesBacktest } = __internal;
+
+function makeSeries(nDays, values) {
+  return Array.from({ length: nDays }, (_, i) => ({
+    date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+    values: values.slice()
+  }));
+}
+
+describe('strategyService one-pick backtest', () => {
+  test('computes profit and cumulative return for top-1 one-share strategy', () => {
+    const nDays = 4;
+    const retUs = makeSeries(nDays, [0.01]);
+    const retJp = makeSeries(nDays, [0.01, 0.0]);
+    const retJpOc = [
+      { date: '2026-01-01', values: [0.0, 0.0] },
+      { date: '2026-01-02', values: [0.02, -0.01] },
+      { date: '2026-01-03', values: [0.03, -0.01] },
+      { date: '2026-01-04', values: [-0.01, 0.01] }
+    ];
+
+    const signalGen = {
+      computeSignal: jest
+        .fn()
+        .mockReturnValueOnce([0.9, 0.1]) // pick first on 2026-01-02
+        .mockReturnValueOnce([0.8, 0.2]) // pick first on 2026-01-03
+        .mockReturnValueOnce([0.7, 0.3]) // pick first on 2026-01-04
+    };
+
+    const jpData = {
+      'A.T': [
+        { date: '2026-01-02', open: 100, close: 102 }, // +2
+        { date: '2026-01-03', open: 100, close: 103 }, // +3
+        { date: '2026-01-04', open: 100, close: 99 } // -1
+      ],
+      'B.T': [
+        { date: '2026-01-02', open: 100, close: 99 },
+        { date: '2026-01-03', open: 100, close: 99 },
+        { date: '2026-01-04', open: 100, close: 101 }
+      ]
+    };
+
+    const result = computeOnePickTop1Backtest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T']
+    });
+
+    expect(result.totalDays).toBe(3);
+    expect(result.tradedDays).toBe(3);
+    expect(result.totalProfitYen).toBe(4); // 2 + 3 - 1
+    // (1+0.02)*(1+0.03)*(1-0.01)-1 = 0.040094
+    expect(result.cumulativeReturnPct).toBeCloseTo(4.01, 2);
+    expect(result.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.winDays).toBe(2);
+    expect(result.lossDays).toBe(1);
+    expect(result.flatDays).toBe(0);
+    expect(result.last7Days.tradedDays).toBe(3);
+    expect(result.last7Days.totalProfitYen).toBe(4);
+    expect(result.last7Days.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.last7Days.winDays).toBe(2);
+    expect(result.last7Days.lossDays).toBe(1);
+    expect(result.last7Days.flatDays).toBe(0);
+    expect(result.last7Days.trades).toHaveLength(3);
+    expect(result.lastTrade).toEqual({
+      date: '2026-01-04',
+      ticker: 'A.T',
+      dailyProfitYen: -1,
+      dailyReturnPct: -1
+    });
+  });
+});
+
+describe('strategyService daily buy candidates backtest', () => {
+  test('computes basket daily profit and hit rate for buy candidates', () => {
+    const nDays = 4;
+    const retUs = makeSeries(nDays, [0.01]);
+    const retJp = makeSeries(nDays, [0.01, 0.0]);
+    const retJpOc = [
+      { date: '2026-01-01', values: [0.0, 0.0] },
+      { date: '2026-01-02', values: [0.02, -0.01] },
+      { date: '2026-01-03', values: [-0.03, 0.01] },
+      { date: '2026-01-04', values: [0.01, 0.01] }
+    ];
+
+    const signalGen = {
+      computeSignal: jest
+        .fn()
+        .mockReturnValueOnce([0.9, 0.1]) // pick A
+        .mockReturnValueOnce([0.8, 0.2]) // pick A
+        .mockReturnValueOnce([0.7, 0.3]) // pick A
+    };
+
+    const jpData = {
+      'A.T': [
+        { date: '2026-01-02', open: 100, close: 102 }, // +2
+        { date: '2026-01-03', open: 100, close: 97 }, // -3
+        { date: '2026-01-04', open: 100, close: 101 } // +1
+      ],
+      'B.T': [
+        { date: '2026-01-02', open: 100, close: 99 },
+        { date: '2026-01-03', open: 100, close: 101 },
+        { date: '2026-01-04', open: 100, close: 101 }
+      ]
+    };
+
+    const result = computeDailyBuyCandidatesBacktest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1, quantile: 0.4 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T']
+    });
+
+    expect(result.mode).toBe('daily_buy_candidates_each_1_share_sell_at_close');
+    expect(result.buyCount).toBe(1);
+    expect(result.tradedDays).toBe(3);
+    expect(result.totalProfitYen).toBe(0); // +2 -3 +1
+    expect(result.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.winDays).toBe(2);
+    expect(result.lossDays).toBe(1);
+    expect(result.flatDays).toBe(0);
+    expect(result.last7Days.tradedDays).toBe(3);
+    expect(result.last7Days.totalProfitYen).toBe(0);
+    expect(result.last7Days.days).toHaveLength(3);
+  });
+});
+
+describe('strategyService daily long-short candidates backtest', () => {
+  test('computes long-short daily profit and hit rate', () => {
+    const nDays = 4;
+    const retUs = makeSeries(nDays, [0.01]);
+    const retJp = makeSeries(nDays, [0.01, 0.0, -0.01, 0.02]);
+    const retJpOc = [
+      { date: '2026-01-01', values: [0.0, 0.0, 0.0, 0.0] },
+      { date: '2026-01-02', values: [0.02, 0.01, -0.01, -0.02] },
+      { date: '2026-01-03', values: [-0.03, 0.02, 0.01, -0.01] },
+      { date: '2026-01-04', values: [0.01, -0.01, -0.02, 0.03] }
+    ];
+
+    const signalGen = {
+      computeSignal: jest
+        .fn()
+        .mockReturnValueOnce([0.9, 0.2, -0.1, -0.8]) // long A, short D
+        .mockReturnValueOnce([0.8, 0.1, -0.2, -0.7]) // long A, short D
+        .mockReturnValueOnce([0.7, 0.2, -0.3, -0.6]) // long A, short D
+    };
+
+    const jpData = {
+      'A.T': [
+        { date: '2026-01-02', open: 100, close: 102 }, // +2
+        { date: '2026-01-03', open: 100, close: 97 }, // -3
+        { date: '2026-01-04', open: 100, close: 101 } // +1
+      ],
+      'B.T': [
+        { date: '2026-01-02', open: 100, close: 101 },
+        { date: '2026-01-03', open: 100, close: 102 },
+        { date: '2026-01-04', open: 100, close: 99 }
+      ],
+      'C.T': [
+        { date: '2026-01-02', open: 100, close: 99 },
+        { date: '2026-01-03', open: 100, close: 101 },
+        { date: '2026-01-04', open: 100, close: 98 }
+      ],
+      'D.T': [
+        { date: '2026-01-02', open: 100, close: 98 }, // short +2
+        { date: '2026-01-03', open: 100, close: 99 }, // short +1
+        { date: '2026-01-04', open: 100, close: 103 } // short -3
+      ]
+    };
+
+    const result = computeDailyLongShortCandidatesBacktest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1, quantile: 0.4 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T', 'C.T', 'D.T']
+    });
+
+    // 日次: (+2 +2)=+4, (-3 +1)=-2, (+1 -3)=-2 => 合計 0
+    expect(result.mode).toBe('daily_long_short_candidates_each_1_share_sell_at_close');
+    expect(result.pickCount).toBe(1);
+    expect(result.tradedDays).toBe(3);
+    expect(result.totalProfitYen).toBe(0);
+    expect(result.hitRatePct).toBeCloseTo(33.33, 2);
+    expect(result.winDays).toBe(1);
+    expect(result.lossDays).toBe(2);
+    expect(result.flatDays).toBe(0);
+    expect(result.last7Days.tradedDays).toBe(3);
+    expect(result.last7Days.totalProfitYen).toBe(0);
+    expect(result.last7Days.days).toHaveLength(3);
+  });
+});
+

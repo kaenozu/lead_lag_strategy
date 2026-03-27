@@ -20,6 +20,7 @@
     "paper": "node scripts/paper_daily.js",
     "paper:demo": "node scripts/paper_trading.js --demo",
     "paper:status": "node scripts/paper_status.js",
+    "strategy:status": "node scripts/strategy_status.js",
     "paper-trade": "node scripts/paper_daily.js",
     "backtest": "node backtest/real.js",
     "backtest:walkforward": "node backtest/walkforward_open_to_close.js",
