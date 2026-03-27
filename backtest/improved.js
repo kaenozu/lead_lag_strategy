@@ -12,6 +12,7 @@ const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 const { computeCFull, writeOhlcvCsvByTicker } = require('./common');
+const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
 
 // ============================================================================
 // 設定
@@ -212,7 +213,6 @@ function weightedReturn(weights, returns) {
     }
     return result;
 }
-
 function totalReturnPercent(metrics) {
     if (metrics.Total !== undefined) return metrics.Total;
     if (metrics.Cumulative !== undefined) return (metrics.Cumulative - 1) * 100;

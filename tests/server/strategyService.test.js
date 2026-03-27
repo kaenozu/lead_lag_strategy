@@ -372,3 +372,4 @@ describe('strategyService daily long-short candidates backtest - last22Days and 
   });
 });
 
+describe('strategyService daily buy candidates backtest - last22Days and monthlyBreakdown', () => {

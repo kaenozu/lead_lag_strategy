@@ -73,7 +73,6 @@ function computeMonthlyPerformance(daily) {
   }
   return result;
 }
-
 function topSignalIndex(signal) {
   let bestIdx = 0;
   let bestVal = Number.NEGATIVE_INFINITY;

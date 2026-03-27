@@ -42,6 +42,7 @@ const {
   JP_ETF_TICKERS,
   SECTOR_LABELS
 } = require('../lib/constants');
+const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
 
 const logger = createLogger('BacktestReal');
 
@@ -95,6 +96,12 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
   // PCA_PLAIN は plainConfig（lambdaReg: 0）で LeadLagSignal と同等
   const signalGenerator = new LeadLagSignal(config);
   let prevWeights = null;
+
+  // 連続損失ルール：カウンターとポジションサイズ
+  let consecutiveLoss = 0;
+  let positionSize = 1.0;
+  const consecutiveLossThreshold = Number(config?.consecutiveLoss?.threshold || 0);
+  const consecutiveLossReduction = Number(config?.consecutiveLoss?.reduction || 0);
 
   for (let i = config.warmupPeriod; i < returnsJpOc.length; i++) {
     const windowStart = i - config.windowLength;
@@ -158,6 +165,24 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     if (Number.isFinite(dailyLossStop) && dailyLossStop > 0) {
       strategyRet = Math.max(strategyRet, -dailyLossStop);
     }
+
+    // 連続損失ルール：ポジションサイズ調整
+    if (Number.isFinite(consecutiveLossThreshold) && consecutiveLossThreshold > 0) {
+      if (strategyRet < 0) {
+        consecutiveLoss++;
+        if (consecutiveLoss >= consecutiveLossThreshold) {
+          // 閾値に達した場合、ポジションを削減
+          positionSize = 1.0 - consecutiveLossReduction;
+        }
+      } else {
+        // 利益が出た場合はリセット
+        consecutiveLoss = 0;
+        positionSize = 1.0;
+      }
+      // ポジションサイズを適用
+      strategyRet = strategyRet * positionSize;
+    }
+
     prevWeights = weights;
 
     strategyReturns.push({
@@ -307,6 +332,10 @@ async function main() {
     riskLimits: {
       maxAbsWeight: config.backtest.maxAbsWeight,
       dailyLossStop: config.backtest.dailyLossStop
+    },
+    consecutiveLoss: {
+      threshold: config.backtest.consecutiveLoss?.threshold,
+      reduction: config.backtest.consecutiveLoss?.reduction
     }
   };
 
