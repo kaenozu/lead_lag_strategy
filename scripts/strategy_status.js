@@ -173,16 +173,22 @@ async function runValidation() {
 
   // 週次 GO/STOP 判定（環境変数で閾値調整可）
   const gate = {
-    minRR6m: parseNumberEnv('WEEKLY_GATE_MIN_RR_6M', 0),
+    // 厳格化した再開基準（環境変数で上書き可能）
+    minRR6m: parseNumberEnv('WEEKLY_GATE_MIN_RR_6M', 0.3),
     minCumulative6mPct: parseNumberEnv('WEEKLY_GATE_MIN_CUM_6M_PCT', 0),
-    maxMdd6mPct: parseNumberEnv('WEEKLY_GATE_MAX_MDD_6M_PCT', -20)
+    maxMdd6mPct: parseNumberEnv('WEEKLY_GATE_MAX_MDD_6M_PCT', -20),
+    minCumulative3mPct: parseNumberEnv('WEEKLY_GATE_MIN_CUM_3M_PCT', 0),
+    minRR3m: parseNumberEnv('WEEKLY_GATE_MIN_RR_3M', 0)
   };
 
   const ls6m = report.strategies.long_short['6m'];
+  const ls3m = report.strategies.long_short['3m'];
   const checks = {
     rr6mPass: ls6m.RR >= gate.minRR6m,
     cumulative6mPass: ls6m.CumulativePct >= gate.minCumulative6mPct,
-    mdd6mPass: ls6m.MDD >= gate.maxMdd6mPct
+    mdd6mPass: ls6m.MDD >= gate.maxMdd6mPct,
+    cumulative3mPass: ls3m.CumulativePct >= gate.minCumulative3mPct,
+    rr3mPass: ls3m.RR >= gate.minRR3m
   };
   const allPass = Object.values(checks).every(Boolean);
 
