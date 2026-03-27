@@ -18,6 +18,8 @@ const { config, validate: validateConfig } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
+  buildDoubleSortPortfolio,
+  buildEqualWeightPortfolio,
   computePerformanceMetrics,
   applyTransactionCosts
 } = require('../lib/portfolio');
@@ -219,53 +221,6 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   }
 
   return { returns: strategyReturns, dates };
-}
-
-// ============================================================================
-// ダブルソート
-// ============================================================================
-
-function buildDoubleSortPortfolio(momentumSignal, pcaSignal, quantile = 0.4) {
-  const n = momentumSignal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
-
-  const momentumRanked = momentumSignal.map((val, idx) => ({ val, idx }))
-    .sort((a, b) => a.val - b.val);
-
-  const pcaRanked = pcaSignal.map((val, idx) => ({ val, idx }))
-    .sort((a, b) => a.val - b.val);
-
-  const rankMap = new Map();
-  for (let i = 0; i < n; i++) {
-    const momIdx = momentumRanked[i].idx;
-    const pcaIdx = pcaRanked[i].idx;
-    if (!rankMap.has(momIdx)) rankMap.set(momIdx, 0);
-    if (!rankMap.has(pcaIdx)) rankMap.set(pcaIdx, 0);
-    rankMap.set(momIdx, rankMap.get(momIdx) + i);
-    rankMap.set(pcaIdx, rankMap.get(pcaIdx) + i);
-  }
-
-  const combinedRank = Array.from(rankMap.entries())
-    .map(([idx, rank]) => ({ idx, rank }))
-    .sort((a, b) => a.rank - b.rank);
-
-  const longIdx = combinedRank.slice(-q).map(x => x.idx);
-  const shortIdx = combinedRank.slice(0, q).map(x => x.idx);
-
-  const weights = new Array(n).fill(0);
-  const w = 1.0 / q;
-  for (const idx of longIdx) weights[idx] = w;
-  for (const idx of shortIdx) weights[idx] = -w;
-
-  return weights;
-}
-
-function buildEqualWeightPortfolio(n, longIndices, shortIndices) {
-  const weights = new Array(n).fill(0);
-  const w = 1.0 / longIndices.length;
-  for (const idx of longIndices) weights[idx] = w;
-  for (const idx of shortIndices) weights[idx] = -w;
-  return weights;
 }
 
 // ============================================================================

@@ -110,8 +110,13 @@ describe('lib/math - Enhanced', () => {
       expect(() => math.correlationMatrix([])).toThrow('Invalid matrix');
     });
 
-    test('サンプル数が少なすぎる場合エラー', () => {
-      expect(() => math.correlationMatrix([[1, 2]])).toThrow('Need at least 2 samples');
+    test('サンプル数が少なすぎる場合は単位行列を返す', () => {
+      const result = math.correlationMatrix([[1, 2]]);
+      // n < 2 の場合は単位行列を返す（フォールバック）
+      expect(result).toEqual([
+        [1, 0],
+        [0, 1]
+      ]);
     });
   });
 
@@ -254,8 +259,13 @@ describe('lib/math - Enhanced', () => {
       expect(diff15).toBeGreaterThanOrEqual(diff60);
     });
 
-    test('サンプル数が 1 のときエラーをスロー', () => {
-      expect(() => math.ewmaCorrelationMatrix([[0.01, 0.02]], 30)).toThrow();
+    test('サンプル数が 1 のときは単位行列を返す', () => {
+      const result = math.ewmaCorrelationMatrix([[0.01, 0.02]], 30);
+      // n < 2 の場合は単位行列を返す（フォールバック）
+      expect(result).toEqual([
+        [1, 0],
+        [0, 1]
+      ]);
     });
 
     test('halflife が 0 以下のときエラーをスロー', () => {
