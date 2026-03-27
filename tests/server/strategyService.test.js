@@ -65,6 +65,13 @@ describe('strategyService one-pick backtest', () => {
     expect(result.winDays).toBe(2);
     expect(result.lossDays).toBe(1);
     expect(result.flatDays).toBe(0);
+    expect(result.last7Days.tradedDays).toBe(3);
+    expect(result.last7Days.totalProfitYen).toBe(4);
+    expect(result.last7Days.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.last7Days.winDays).toBe(2);
+    expect(result.last7Days.lossDays).toBe(1);
+    expect(result.last7Days.flatDays).toBe(0);
+    expect(result.last7Days.trades).toHaveLength(3);
     expect(result.lastTrade).toEqual({
       date: '2026-01-04',
       ticker: 'A.T',

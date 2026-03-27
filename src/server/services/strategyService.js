@@ -69,6 +69,7 @@ function computeOnePickTop1Backtest({
   let lossDays = 0;
   let flatDays = 0;
   let lastTrade = null;
+  const tradeHistory = [];
 
   for (let i = windowLength; i < retJpOc.length; i++) {
     const start = i - windowLength;
@@ -99,7 +100,15 @@ function computeOnePickTop1Backtest({
       dailyProfitYen: round2(dailyProfitYen),
       dailyReturnPct: round2(dailyReturn * 100)
     };
+    tradeHistory.push(lastTrade);
   }
+
+  const last7Trades = tradeHistory.slice(-7);
+  const last7ProfitYen = round2(last7Trades.reduce((sum, t) => sum + t.dailyProfitYen, 0));
+  const last7WinDays = last7Trades.filter((t) => t.dailyProfitYen > 0).length;
+  const last7LossDays = last7Trades.filter((t) => t.dailyProfitYen < 0).length;
+  const last7FlatDays = last7Trades.length - last7WinDays - last7LossDays;
+  const last7HitRatePct = last7Trades.length > 0 ? round2((last7WinDays / last7Trades.length) * 100) : 0;
 
   return {
     mode: 'one_share_top1_open_close',
@@ -112,7 +121,16 @@ function computeOnePickTop1Backtest({
     winDays,
     lossDays,
     flatDays,
-    lastTrade
+    lastTrade,
+    last7Days: {
+      tradedDays: last7Trades.length,
+      totalProfitYen: last7ProfitYen,
+      hitRatePct: last7HitRatePct,
+      winDays: last7WinDays,
+      lossDays: last7LossDays,
+      flatDays: last7FlatDays,
+      trades: last7Trades
+    }
   };
 }
 
