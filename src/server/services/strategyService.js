@@ -36,6 +36,44 @@ function buildJpBarLookupByTickerDate(jpData, tickers) {
   return lookup;
 }
 
+/**
+ * 日次損益リストを月次（YYYY-MM）ごとに集計する
+ * @param {Array<{date: string, dayProfitYen: number}>} daily
+ * @returns {Array<{month: string, tradedDays: number, totalProfitYen: number,
+ *                  averageDailyProfitYen: number, hitRatePct: number,
+ *                  winDays: number, lossDays: number, flatDays: number}>}
+ */
+function computeMonthlyPerformance(daily) {
+  const byMonth = new Map();
+  for (const d of daily) {
+    if (!d || !d.date) continue;
+    const month = d.date.slice(0, 7); // YYYY-MM
+    if (!byMonth.has(month)) {
+      byMonth.set(month, { month, days: [] });
+    }
+    byMonth.get(month).days.push(d);
+  }
+  const result = [];
+  for (const [, entry] of byMonth) {
+    const days = entry.days;
+    const totalProfitYen = round2(days.reduce((s, d) => s + d.dayProfitYen, 0));
+    const winDays = days.filter((d) => d.dayProfitYen > 0).length;
+    const lossDays = days.filter((d) => d.dayProfitYen < 0).length;
+    const flatDays = days.length - winDays - lossDays;
+    result.push({
+      month: entry.month,
+      tradedDays: days.length,
+      totalProfitYen,
+      averageDailyProfitYen: days.length > 0 ? round2(totalProfitYen / days.length) : 0,
+      hitRatePct: days.length > 0 ? round2((winDays / days.length) * 100) : 0,
+      winDays,
+      lossDays,
+      flatDays
+    });
+  }
+  return result;
+}
+
 function topSignalIndex(signal) {
   let bestIdx = 0;
   let bestVal = Number.NEGATIVE_INFINITY;
@@ -200,6 +238,12 @@ function computeDailyBuyCandidatesBacktest({
   const last7Loss = last7.filter((d) => d.dayProfitYen < 0).length;
   const last7Flat = last7.length - last7Win - last7Loss;
 
+  const last22 = daily.slice(-22);
+  const last22ProfitYen = round2(last22.reduce((sum, d) => sum + d.dayProfitYen, 0));
+  const last22Win = last22.filter((d) => d.dayProfitYen > 0).length;
+  const last22Loss = last22.filter((d) => d.dayProfitYen < 0).length;
+  const last22Flat = last22.length - last22Win - last22Loss;
+
   return {
     mode: 'daily_buy_candidates_each_1_share_sell_at_close',
     buyCount,
@@ -219,7 +263,17 @@ function computeDailyBuyCandidatesBacktest({
       lossDays: last7Loss,
       flatDays: last7Flat,
       days: last7
-    }
+    },
+    last22Days: {
+      tradedDays: last22.length,
+      totalProfitYen: last22ProfitYen,
+      hitRatePct: last22.length > 0 ? round2((last22Win / last22.length) * 100) : 0,
+      winDays: last22Win,
+      lossDays: last22Loss,
+      flatDays: last22Flat,
+      days: last22
+    },
+    monthlyBreakdown: computeMonthlyPerformance(daily)
   };
 }
 
@@ -305,6 +359,12 @@ function computeDailyLongShortCandidatesBacktest({
   const last7Loss = last7.filter((d) => d.dayProfitYen < 0).length;
   const last7Flat = last7.length - last7Win - last7Loss;
 
+  const last22 = daily.slice(-22);
+  const last22ProfitYen = round2(last22.reduce((sum, d) => sum + d.dayProfitYen, 0));
+  const last22Win = last22.filter((d) => d.dayProfitYen > 0).length;
+  const last22Loss = last22.filter((d) => d.dayProfitYen < 0).length;
+  const last22Flat = last22.length - last22Win - last22Loss;
+
   return {
     mode: 'daily_long_short_candidates_each_1_share_sell_at_close',
     pickCount,
@@ -324,7 +384,17 @@ function computeDailyLongShortCandidatesBacktest({
       lossDays: last7Loss,
       flatDays: last7Flat,
       days: last7
-    }
+    },
+    last22Days: {
+      tradedDays: last22.length,
+      totalProfitYen: last22ProfitYen,
+      hitRatePct: last22.length > 0 ? round2((last22Win / last22.length) * 100) : 0,
+      winDays: last22Win,
+      lossDays: last22Loss,
+      flatDays: last22Flat,
+      days: last22
+    },
+    monthlyBreakdown: computeMonthlyPerformance(daily)
   };
 }
 
@@ -764,7 +834,8 @@ module.exports = {
     topSignalIndex,
     computeOnePickTop1Backtest,
     computeDailyBuyCandidatesBacktest,
-    computeDailyLongShortCandidatesBacktest
+    computeDailyLongShortCandidatesBacktest,
+    computeMonthlyPerformance
   }
 };
 
