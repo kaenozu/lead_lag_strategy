@@ -61,6 +61,10 @@ describe('strategyService one-pick backtest', () => {
     expect(result.totalProfitYen).toBe(4); // 2 + 3 - 1
     // (1+0.02)*(1+0.03)*(1-0.01)-1 = 0.040094
     expect(result.cumulativeReturnPct).toBeCloseTo(4.01, 2);
+    expect(result.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.winDays).toBe(2);
+    expect(result.lossDays).toBe(1);
+    expect(result.flatDays).toBe(0);
     expect(result.lastTrade).toEqual({
       date: '2026-01-04',
       ticker: 'A.T',

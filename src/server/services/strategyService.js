@@ -65,6 +65,9 @@ function computeOnePickTop1Backtest({
   let cumulativeProfitYen = 0;
   let cumulativeReturn = 1;
   let tradedDays = 0;
+  let winDays = 0;
+  let lossDays = 0;
+  let flatDays = 0;
   let lastTrade = null;
 
   for (let i = windowLength; i < retJpOc.length; i++) {
@@ -87,6 +90,9 @@ function computeOnePickTop1Backtest({
     tradedDays += 1;
     cumulativeProfitYen += dailyProfitYen;
     cumulativeReturn *= (1 + dailyReturn);
+    if (dailyProfitYen > 0) winDays += 1;
+    else if (dailyProfitYen < 0) lossDays += 1;
+    else flatDays += 1;
     lastTrade = {
       date,
       ticker,
@@ -102,6 +108,10 @@ function computeOnePickTop1Backtest({
     totalProfitYen: round2(cumulativeProfitYen),
     cumulativeReturnPct: round2((cumulativeReturn - 1) * 100),
     averageDailyProfitYen: tradedDays > 0 ? round2(cumulativeProfitYen / tradedDays) : 0,
+    hitRatePct: tradedDays > 0 ? round2((winDays / tradedDays) * 100) : 0,
+    winDays,
+    lossDays,
+    flatDays,
     lastTrade
   };
 }
