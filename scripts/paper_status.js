@@ -2,7 +2,6 @@
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
 const { config } = require('../lib/config');
 const { loadJournal, journalStats } = require('../lib/paper/journal');
 const { loadPaperGates, evaluatePaperGates } = require('../lib/paper/gates');

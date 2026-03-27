@@ -46,8 +46,8 @@ function registerPaperRoutes(app, deps) {
       const p = saveOperatingRules(config, req.body || {});
       writeAudit('operating_rules.save', { path: p });
       res.json({ ok: true, path: p });
-    } catch (e) {
-      logger.error('operating rules save failed', { error: e.message });
+    } catch (error) {
+      logger.error('operating rules save failed', { error: error.message });
       res.status(500).json({ error: 'save failed' });
     }
   });
@@ -71,7 +71,7 @@ function registerPaperRoutes(app, deps) {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="order_plan.csv"');
       res.send(body);
-    } catch (e) {
+    } catch {
       res.status(404).type('text/plain; charset=utf-8').send('signal.json が必要です（先にシグナル生成）。');
     }
   });
