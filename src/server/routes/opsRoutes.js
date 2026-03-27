@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs/promises');
+const { buildExecutionPlan } = require('../../../lib/ops/executionPlanner');
 
 async function readJsonLines(filePath, limit = 200) {
   try {
@@ -22,6 +23,70 @@ async function readJsonLines(filePath, limit = 200) {
   }
 }
 
+function parseBoundedInt(raw, fallback, min, max) {
+  const parsed = Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function getPresetEntries(config) {
+  return Object.entries(config.operations.profiles || {}).map(([name, values]) => ({
+    name,
+    values
+  }));
+}
+
+function applyPreset(config, name, preset) {
+  config.backtest.windowLength = Number(preset.windowLength);
+  config.backtest.lambdaReg = Number(preset.lambdaReg);
+  config.backtest.quantile = Number(preset.quantile);
+  config.backtest.stability.maxPositionAbs = Number(preset.maxPositionAbs);
+  config.backtest.stability.maxGrossExposure = Number(preset.maxGrossExposure);
+  config.backtest.stability.dailyLossStop = Number(preset.dailyLossStop || 0);
+  config.operations.activePreset = name;
+  config.preset.active = name;
+}
+
+function buildExecutionPlanRequest(req, config) {
+  const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
+  const cash = Number(req.body?.cash ?? config.trading.initialCapital);
+  return buildExecutionPlan(signals, {
+    cash,
+    lotSize: Number(req.body?.lotSize || 1),
+    maxPerOrder: Number(req.body?.maxPerOrder || cash),
+    minOrderValue: Number(req.body?.minOrderValue || 0)
+  });
+}
+
+async function buildDataQualityResponse(req, config, deps) {
+  const days = parseBoundedInt(
+    req.query?.days,
+    config.operations.dataQuality.lookbackDays,
+    30,
+    3000
+  );
+  const [usRes, jpRes] = await Promise.all([
+    deps.fetchMarketDataForTickers(deps.US_ETF_TICKERS, days, config),
+    deps.fetchMarketDataForTickers(deps.JP_ETF_TICKERS, days, config)
+  ]);
+  const quality = deps.assessDataQuality({ ...usRes.byTicker, ...jpRes.byTicker });
+  deps.runtimeState.lastDataQuality = {
+    at: new Date().toISOString(),
+    ok: quality.ok,
+    badTickers: quality.badTickers
+  };
+  if (!quality.ok) {
+    await deps.sendNotification({
+      channel: config.operations.notificationChannel,
+      level: 'warn',
+      message: 'Data quality warning',
+      context: { badTickers: quality.badTickers },
+      config
+    });
+  }
+  return quality;
+}
+
 function registerOpsRoutes(app, deps) {
   const {
     config,
@@ -29,7 +94,6 @@ function registerOpsRoutes(app, deps) {
     writeAudit,
     AUDIT_PATH,
     sendNotification,
-    buildExecutionPlan,
     inverseVolAllocation,
     explainSignals,
     assessDataQuality,
@@ -40,10 +104,7 @@ function registerOpsRoutes(app, deps) {
   } = deps;
 
   app.get('/api/presets', ensureRole(['viewer', 'trader', 'admin']), (_req, res) => {
-    const presets = Object.keys(config.operations.profiles || {}).map((name) => ({
-      name,
-      values: config.operations.profiles[name]
-    }));
+    const presets = getPresetEntries(config);
     res.json({ active: config.operations.activePreset, presets });
   });
 
@@ -57,14 +118,7 @@ function registerOpsRoutes(app, deps) {
       });
     }
 
-    config.backtest.windowLength = Number(preset.windowLength);
-    config.backtest.lambdaReg = Number(preset.lambdaReg);
-    config.backtest.quantile = Number(preset.quantile);
-    config.backtest.stability.maxPositionAbs = Number(preset.maxPositionAbs);
-    config.backtest.stability.maxGrossExposure = Number(preset.maxGrossExposure);
-    config.backtest.stability.dailyLossStop = Number(preset.dailyLossStop || 0);
-    config.operations.activePreset = name;
-    config.preset.active = name;
+    applyPreset(config, name, preset);
 
     writeAudit('preset.apply', {
       role: req.role,
@@ -82,8 +136,7 @@ function registerOpsRoutes(app, deps) {
   });
 
   app.get('/api/audit', ensureRole(['admin']), async (req, res) => {
-    const limitRaw = parseInt(String(req.query.limit || '100'), 10);
-    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, limitRaw)) : 100;
+    const limit = parseBoundedInt(req.query.limit, 100, 1, 1000);
     const entries = await readJsonLines(AUDIT_PATH, limit);
     res.json({ entries });
   });
@@ -107,14 +160,7 @@ function registerOpsRoutes(app, deps) {
   });
 
   app.post('/api/execution/plan', ensureRole(['trader', 'admin']), (req, res) => {
-    const signals = Array.isArray(req.body?.signals) ? req.body.signals : [];
-    const cash = Number(req.body?.cash ?? config.trading.initialCapital);
-    const plan = buildExecutionPlan(signals, {
-      cash,
-      lotSize: Number(req.body?.lotSize || 1),
-      maxPerOrder: Number(req.body?.maxPerOrder || cash),
-      minOrderValue: Number(req.body?.minOrderValue || 0)
-    });
+    const plan = buildExecutionPlanRequest(req, config);
     writeAudit('execution.plan', { role: req.role, orders: plan.totalOrders });
     res.json(plan);
   });
@@ -132,27 +178,14 @@ function registerOpsRoutes(app, deps) {
   });
 
   app.get('/api/ops/data-quality', ensureRole(['trader', 'admin']), async (req, res) => {
-    const daysRaw = parseInt(String(req.query.days || config.operations.dataQuality.lookbackDays), 10);
-    const days = Number.isFinite(daysRaw) ? Math.max(30, Math.min(3000, daysRaw)) : config.operations.dataQuality.lookbackDays;
-    const [usRes, jpRes] = await Promise.all([
-      fetchMarketDataForTickers(US_ETF_TICKERS, days, config),
-      fetchMarketDataForTickers(JP_ETF_TICKERS, days, config)
-    ]);
-    const quality = assessDataQuality({ ...usRes.byTicker, ...jpRes.byTicker });
-    runtimeState.lastDataQuality = {
-      at: new Date().toISOString(),
-      ok: quality.ok,
-      badTickers: quality.badTickers
-    };
-    if (!quality.ok) {
-      await sendNotification({
-        channel: config.operations.notificationChannel,
-        level: 'warn',
-        message: 'Data quality warning',
-        context: { badTickers: quality.badTickers },
-        config
-      });
-    }
+    const quality = await buildDataQualityResponse(req, config, {
+      fetchMarketDataForTickers,
+      US_ETF_TICKERS,
+      JP_ETF_TICKERS,
+      runtimeState,
+      assessDataQuality,
+      sendNotification
+    });
     res.json(quality);
   });
 

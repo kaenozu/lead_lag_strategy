@@ -36,6 +36,36 @@ describe('lib/paper/journal', () => {
     expect(r.journal.entries).toHaveLength(1);
   });
 
+  test('appendIfNew dedupes matching entries even if not the last record', () => {
+    const j = {
+      version: 1,
+      startedAt: null,
+      entries: [
+        {
+          recordedAt: '2025-03-01T10:00:00Z',
+          signalDate: '2025-02-28',
+          fingerprint: 'abc'
+        },
+        {
+          recordedAt: '2025-03-01T11:00:00Z',
+          signalDate: '2025-03-01',
+          fingerprint: 'def'
+        }
+      ]
+    };
+    const entry = {
+      recordedAt: '2025-03-01T12:00:00Z',
+      signalDate: '2025-02-28',
+      fingerprint: 'abc',
+      buyTickers: ['1618.T'],
+      sellTickers: ['1621.T'],
+      configSnapshot: {}
+    };
+    const r = appendIfNew(j, entry);
+    expect(r.appended).toBe(false);
+    expect(r.journal.entries).toHaveLength(2);
+  });
+
   test('journalStats counts rebalances', () => {
     const j = {
       version: 1,

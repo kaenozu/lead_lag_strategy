@@ -35,7 +35,6 @@ const { sendNotification } = require('../../lib/ops/notifier');
 const { writeAudit, AUDIT_PATH } = require('../../lib/ops/audit');
 const { ensureRole } = require('../../lib/ops/rbac');
 const { assessDataQuality } = require('../../lib/ops/dataQuality');
-const { buildExecutionPlan } = require('../../lib/ops/executionPlanner');
 const { explainSignals } = require('../../lib/ops/explain');
 const { inverseVolAllocation } = require('../../lib/ops/allocation');
 
@@ -46,19 +45,20 @@ const { registerConfigRoutes } = require('./routes/configRoutes');
 const { registerOpsRoutes } = require('./routes/opsRoutes');
 const { registerPaperRoutes } = require('./routes/paperRoutes');
 const { validateBacktestParams, validateConfigUpdateParams } = require('./modules/paramValidation');
-const { getUiConfigPayload, updateBacktestConfig } = require('./modules/configStore');
+const { getUiConfigPayload, updateBacktestConfig, buildConfigUpdateSummary } = require('./modules/configStore');
 
 const logger = createLogger('Server');
 
-function createApp() {
-  const app = express();
-  const runtimeState = {
+function createRuntimeState() {
+  return {
     lastSignal: null,
     anomalies: [],
     lastDataQuality: null
   };
+}
 
-  function pushAnomaly(type, message, context = {}) {
+function createPushAnomaly(runtimeState) {
+  return (type, message, context = {}) => {
     runtimeState.anomalies.push({
       at: new Date().toISOString(),
       type,
@@ -66,46 +66,46 @@ function createApp() {
       context
     });
     if (runtimeState.anomalies.length > 500) runtimeState.anomalies.shift();
-  }
+  };
+}
 
-  // API Key Auth
+function createApiKeyAuth(loggerInstance) {
   const API_KEY = process.env.API_KEY;
-  function apiKeyAuth(req, res, next) {
+
+  return (req, res, next) => {
     if (!API_KEY) return next();
     const key = req.headers['x-api-key'];
     if (!key || key !== API_KEY) {
-      logger.warn('Unauthorized API access attempt', { ip: req.ip, path: req.path });
+      loggerInstance.warn('Unauthorized API access attempt', { ip: req.ip, path: req.path });
       return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
     }
     next();
-  }
+  };
+}
 
-  // Rate Limiting
-  const apiLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
-    message: { error: 'Too many requests, please try again later' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => ipKeyGenerator(req.ip)
-  });
+function createRateLimiters() {
+  return {
+    apiLimiter: rateLimit({
+      windowMs: 60 * 1000,
+      max: 30,
+      message: { error: 'Too many requests, please try again later' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => ipKeyGenerator(req.ip)
+    }),
+    backtestLimiter: rateLimit({
+      windowMs: 5 * 60 * 1000,
+      max: 10,
+      message: { error: 'Backtest requests are rate-limited to 10 per 5 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => ipKeyGenerator(req.ip)
+    })
+  };
+}
 
-  const backtestLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000,
-    max: 10,
-    message: { error: 'Backtest requests are rate-limited to 10 per 5 minutes' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => ipKeyGenerator(req.ip)
-  });
-
-  // Middleware
-  app.use(cors());
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.static('public'));
-
-  // Dependencies for services and routes
-  const deps = {
+function buildSharedDeps(runtimeState, pushAnomaly) {
+  return {
     config,
     logger,
     riskPayload,
@@ -133,19 +133,33 @@ function createApp() {
     writeAudit,
     AUDIT_PATH,
     sendNotification,
-    buildExecutionPlan,
     inverseVolAllocation,
     explainSignals,
     assessDataQuality,
     getDataSourcesForUi,
     getUiConfigPayload,
     updateBacktestConfig,
+    buildConfigUpdateSummary,
     runtimeState,
     pushAnomaly
   };
+}
 
-  const strategyService = createStrategyService({ ...deps, writeAudit });
-  const routeDeps = { ...deps, strategyService };
+function createApp() {
+  const app = express();
+  const runtimeState = createRuntimeState();
+  const pushAnomaly = createPushAnomaly(runtimeState);
+  const { apiLimiter, backtestLimiter } = createRateLimiters();
+  const apiKeyAuth = createApiKeyAuth(logger);
+
+  // Middleware
+  app.use(cors());
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.static('public'));
+
+  const sharedDeps = buildSharedDeps(runtimeState, pushAnomaly);
+  const strategyService = createStrategyService({ ...sharedDeps, writeAudit });
+  const routeDeps = { ...sharedDeps, strategyService };
 
   // Register Routes
   app.use('/api/', apiLimiter);

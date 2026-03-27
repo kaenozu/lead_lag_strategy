@@ -1,5 +1,22 @@
 'use strict';
 
+function buildConfigPayload(riskPayload, getDataSourcesForUi, getUiConfigPayload) {
+  return getUiConfigPayload({
+    disclosure: riskPayload(),
+    dataSources: getDataSourcesForUi()
+  });
+}
+
+function logConfigUpdate(logger, config) {
+  logger.info('Configuration updated via API', {
+    windowLength: config.backtest.windowLength,
+    lambdaReg: config.backtest.lambdaReg,
+    quantile: config.backtest.quantile,
+    dataMode: config.data.mode,
+    usOhlcvProvider: config.data.usOhlcvProvider
+  });
+}
+
 function registerConfigRoutes(app, deps) {
   const {
     config,
@@ -8,18 +25,15 @@ function registerConfigRoutes(app, deps) {
     getDataSourcesForUi,
     getUiConfigPayload,
     validateConfigUpdateParams,
-    updateBacktestConfig
+    updateBacktestConfig,
+    buildConfigUpdateSummary
   } = deps;
 
-  app.get('/api/config', (req, res) => {
+  app.get('/api/config', (_req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.json(getUiConfigPayload({
-      disclosure: riskPayload(),
-      dataSources: getDataSourcesForUi()
-    }));
+    res.json(buildConfigPayload(riskPayload, getDataSourcesForUi, getUiConfigPayload));
   });
 
-  /** データ取得（日本・米国）は起動時に自動決定。POST ではバックテスト用パラメータのみ変更可能 */
   app.post('/api/config', (req, res) => {
     const body = req.body || {};
     const { windowLength, lambdaReg, quantile } = body;
@@ -30,22 +44,13 @@ function registerConfigRoutes(app, deps) {
     }
 
     updateBacktestConfig(validation.updates);
-
-    logger.info('Configuration updated via API', {
-      windowLength: config.backtest.windowLength,
-      lambdaReg: config.backtest.lambdaReg,
-      quantile: config.backtest.quantile,
-      dataMode: config.data.mode,
-      usOhlcvProvider: config.data.usOhlcvProvider
-    });
-
-    res.json(getUiConfigPayload({
-      disclosure: riskPayload(),
-      dataSources: getDataSourcesForUi()
-    }));
+    logConfigUpdate(logger, buildConfigUpdateSummary(config));
+    res.json(buildConfigPayload(riskPayload, getDataSourcesForUi, getUiConfigPayload));
   });
 }
 
 module.exports = {
-  registerConfigRoutes
+  registerConfigRoutes,
+  buildConfigPayload,
+  logConfigUpdate
 };
