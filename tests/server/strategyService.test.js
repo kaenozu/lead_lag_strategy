@@ -371,5 +371,3 @@ describe('strategyService daily long-short candidates backtest - last22Days and 
     expect(result.monthlyBreakdown[0].month).toBe('2026-01');
   });
 });
-
-describe('strategyService daily buy candidates backtest - last22Days and monthlyBreakdown', () => {
