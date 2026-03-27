@@ -5,6 +5,7 @@ const { __internal } = require('../../src/server/services/strategyService');
 const { computeOnePickTop1Backtest } = __internal;
 const { computeDailyBuyCandidatesBacktest } = __internal;
 const { computeDailyLongShortCandidatesBacktest } = __internal;
+const { computeMonthlyPerformance } = __internal;
 
 function makeSeries(nDays, values) {
   return Array.from({ length: nDays }, (_, i) => ({
@@ -209,6 +210,165 @@ describe('strategyService daily long-short candidates backtest', () => {
     expect(result.last7Days.tradedDays).toBe(3);
     expect(result.last7Days.totalProfitYen).toBe(0);
     expect(result.last7Days.days).toHaveLength(3);
+  });
+});
+
+describe('computeMonthlyPerformance', () => {
+  test('groups daily data by month and computes aggregate stats', () => {
+    const daily = [
+      { date: '2026-01-05', dayProfitYen: 10 },
+      { date: '2026-01-06', dayProfitYen: -5 },
+      { date: '2026-01-07', dayProfitYen: 0 },
+      { date: '2026-02-02', dayProfitYen: 20 },
+      { date: '2026-02-03', dayProfitYen: 15 }
+    ];
+    const result = computeMonthlyPerformance(daily);
+    expect(result).toHaveLength(2);
+
+    const jan = result.find((m) => m.month === '2026-01');
+    expect(jan).toBeDefined();
+    expect(jan.tradedDays).toBe(3);
+    expect(jan.totalProfitYen).toBe(5); // 10 - 5 + 0
+    expect(jan.winDays).toBe(1);
+    expect(jan.lossDays).toBe(1);
+    expect(jan.flatDays).toBe(1);
+    expect(jan.hitRatePct).toBeCloseTo(33.33, 2);
+
+    const feb = result.find((m) => m.month === '2026-02');
+    expect(feb).toBeDefined();
+    expect(feb.tradedDays).toBe(2);
+    expect(feb.totalProfitYen).toBe(35);
+    expect(feb.winDays).toBe(2);
+    expect(feb.lossDays).toBe(0);
+    expect(feb.flatDays).toBe(0);
+    expect(feb.hitRatePct).toBe(100);
+  });
+
+  test('returns empty array for empty input', () => {
+    expect(computeMonthlyPerformance([])).toEqual([]);
+  });
+
+  test('skips entries without a date', () => {
+    const daily = [
+      { date: '2026-03-01', dayProfitYen: 5 },
+      { dayProfitYen: 10 },
+      { date: null, dayProfitYen: 3 }
+    ];
+    const result = computeMonthlyPerformance(daily);
+    expect(result).toHaveLength(1);
+    expect(result[0].tradedDays).toBe(1);
+  });
+});
+
+describe('strategyService daily buy candidates backtest - last22Days and monthlyBreakdown', () => {
+  test('includes last22Days and monthlyBreakdown in result', () => {
+    const nDays = 6;
+    const retUs = Array.from({ length: nDays }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      values: [0.01]
+    }));
+    const retJp = Array.from({ length: nDays }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      values: [0.01, 0.0]
+    }));
+    const retJpOc = Array.from({ length: nDays }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      values: [i % 2 === 0 ? 0.01 : -0.01, 0.0]
+    }));
+    const signalGen = {
+      computeSignal: jest.fn().mockReturnValue([0.9, 0.1])
+    };
+    const jpData = {
+      'A.T': Array.from({ length: nDays }, (_, i) => ({
+        date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+        open: 100,
+        close: i % 2 === 0 ? 101 : 99
+      })),
+      'B.T': Array.from({ length: nDays }, (_, i) => ({
+        date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+        open: 100,
+        close: 100
+      }))
+    };
+
+    const result = computeDailyBuyCandidatesBacktest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1, quantile: 0.1 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T']
+    });
+
+    expect(result).toHaveProperty('last22Days');
+    expect(result.last22Days).toHaveProperty('tradedDays');
+    expect(result.last22Days).toHaveProperty('totalProfitYen');
+    expect(result.last22Days).toHaveProperty('hitRatePct');
+    expect(result.last22Days).toHaveProperty('days');
+    expect(result).toHaveProperty('monthlyBreakdown');
+    expect(Array.isArray(result.monthlyBreakdown)).toBe(true);
+  });
+});
+
+describe('strategyService daily long-short candidates backtest - last22Days and monthlyBreakdown', () => {
+  test('includes last22Days and monthlyBreakdown in result', () => {
+    const nDays = 4;
+    const retUs = Array.from({ length: nDays }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      values: [0.01]
+    }));
+    const retJp = Array.from({ length: nDays }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      values: [0.01, 0.0]
+    }));
+    const retJpOc = [
+      { date: '2026-01-01', values: [0.0, 0.0] },
+      { date: '2026-01-02', values: [0.02, -0.01] },
+      { date: '2026-01-03', values: [-0.03, 0.01] },
+      { date: '2026-01-04', values: [0.01, 0.01] }
+    ];
+    const signalGen = {
+      computeSignal: jest.fn()
+        .mockReturnValueOnce([0.9, 0.1])
+        .mockReturnValueOnce([0.1, 0.9])
+        .mockReturnValueOnce([0.5, 0.5])
+    };
+    const jpData = {
+      'A.T': [
+        { date: '2026-01-02', open: 100, close: 102 },
+        { date: '2026-01-03', open: 100, close: 97 },
+        { date: '2026-01-04', open: 100, close: 101 }
+      ],
+      'B.T': [
+        { date: '2026-01-02', open: 100, close: 99 },
+        { date: '2026-01-03', open: 100, close: 101 },
+        { date: '2026-01-04', open: 100, close: 101 }
+      ]
+    };
+
+    const result = computeDailyLongShortCandidatesBacktest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1, quantile: 0.5 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T']
+    });
+
+    expect(result).toHaveProperty('last22Days');
+    expect(result.last22Days).toHaveProperty('tradedDays');
+    expect(result.last22Days).toHaveProperty('totalProfitYen');
+    expect(result.last22Days).toHaveProperty('days');
+    expect(result).toHaveProperty('monthlyBreakdown');
+    expect(Array.isArray(result.monthlyBreakdown)).toBe(true);
+    expect(result.monthlyBreakdown.length).toBeGreaterThan(0);
+    expect(result.monthlyBreakdown[0].month).toBe('2026-01');
   });
 });
 
