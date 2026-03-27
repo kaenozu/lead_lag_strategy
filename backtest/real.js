@@ -98,8 +98,10 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     const windowStart = i - config.windowLength;
     const retUsWindow = returnsUs.slice(windowStart, i).map(r => r.values);
     const retJpWindow = returnsJp.slice(windowStart, i).map(r => r.values);
-    // 論文: 共分散は Wt={t-L..t-1}、米国ショックは「直前に観測可能な米国 CC」＝当行 i（日付整列済み）
-    const retUsLatest = returnsUs[i].values;
+    // 論文: 共分散は Wt={t-L..t-1}、米国ショックは「直前に観測可能な米国 CC」＝t-1 日のデータ
+    // 注意：returnsUs[i] は t 日の米国リターンであり、日本市場が営業中の t 日には観測できない
+    // したがって、returnsUs[i-1]（t-1 日の米国リターン）を使用する
+    const retUsLatest = returnsUs[i - 1].values;
 
     let weights;
 
