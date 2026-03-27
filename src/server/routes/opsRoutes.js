@@ -64,6 +64,7 @@ function registerOpsRoutes(app, deps) {
     config.backtest.stability.maxGrossExposure = Number(preset.maxGrossExposure);
     config.backtest.stability.dailyLossStop = Number(preset.dailyLossStop || 0);
     config.operations.activePreset = name;
+    config.preset.active = name;
 
     writeAudit('preset.apply', {
       role: req.role,

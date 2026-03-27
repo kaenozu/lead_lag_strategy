@@ -1,7 +1,7 @@
 /**
  * 推奨作業の一括実行（タスクスケジューラ / cron 向け）
  *
- * 既定: doctor（軽量）→ ペーパーデモ → CLI シグナル（バックテストは省略＝毎日回しやすい）
+ * 既定: doctor（軽量）→ CLI シグナル → ペーパー・ジャーナル（バックテストは省略＝毎日回しやすい）
  * 初回・パラメータ変更後: --with-backtest / --doctor-full を付与
  *
  * 例:
@@ -14,6 +14,7 @@
 'use strict';
 
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
@@ -62,17 +63,28 @@ function main() {
     console.log('\n── バックテスト ──\n（スキップ。必要なときだけ npm run workflow -- --with-backtest）\n');
   }
 
-  if (!skipPaper) {
-    code = run('ペーパー（デモ記録）', 'node', ['scripts/paper_trading.js']);
+  if (!noSignal) {
+    code = run('本日シグナル (CLI)', 'node', ['src/generate_signal.js']);
     if (code !== 0) {
       process.exit(code);
     }
   }
 
-  if (!noSignal) {
-    code = run('本日シグナル (CLI)', 'node', ['src/generate_signal.js']);
+  if (!skipPaper) {
+    code = run('ペーパー・ジャーナル', 'node', ['scripts/paper_daily.js']);
     if (code !== 0) {
       process.exit(code);
+    }
+    const statusPath = path.join(root, 'results', 'paper_verification_status.json');
+    try {
+      const st = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+      if (st.graduationReady) {
+        console.log(
+          '\n[workflow] ペーパー検証: 設定した卒業ゲートをすべて満たしました（＝実弾推奨ではありません）。\n'
+        );
+      }
+    } catch {
+      // 無視
     }
   }
 

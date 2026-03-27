@@ -107,6 +107,36 @@ async function setupApiMocks(page) {
       body: JSON.stringify(backtestFixture)
     });
   });
+
+  await page.route('**/api/paper/verification', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ skipped: true, reason: 'e2e mock' })
+    });
+  });
+  await page.route('**/api/walkforward/summary', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, message: 'e2e mock' })
+    });
+  });
+  await page.route('**/api/operating-rules', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ path: '/mock', rules: { customLines: [] } })
+    });
+  });
+
+  await page.route('**/api/paper/order-csv', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/csv; charset=utf-8',
+      body: 'Side,Ticker,Qty,EstValue,RefPrice\nBUY,1617.T,100,100000,1000\n'
+    });
+  });
 }
 
 test.describe('UI モンキーテスト（API モック）', () => {

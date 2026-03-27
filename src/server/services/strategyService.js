@@ -40,7 +40,8 @@ function createStrategyService(deps) {
     computeRollingMetrics,
     summarizeSignalSourcePaths,
     buildOpsDecision,
-    fetchWithRetry
+    fetchWithRetry,
+    writeAudit
   } = deps;
 
   async function runBacktest(body) {
@@ -293,14 +294,18 @@ function createStrategyService(deps) {
             retrySuffix +
             avHint,
           signals: [],
-          sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources),
+          sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources, {
+            jpDataMode: config.data.mode,
+            usOhlcvProvider: config.data.usOhlcvProvider
+          }),
           opsDecision: buildOpsDecision({
             usSources: usRes.sources,
             jpSources: jpRes.sources,
             usErrors: usRes.errors,
             jpErrors: jpRes.errors,
             signalDataRecoveryAttempted,
-            insufficientData: true
+            insufficientData: true,
+            jpDataMode: config.data.mode
           }),
           disclosure: riskPayload()
         }
@@ -355,6 +360,17 @@ function createStrategyService(deps) {
     const meanSig = signal.reduce((a, b) => a + b, 0) / signal.length;
     const stdSig = Math.sqrt(signal.reduce((sq, x) => sq + (x - meanSig) ** 2, 0) / signal.length);
 
+    if (typeof writeAudit === 'function') {
+      writeAudit('signal.api', {
+        latestDate: dates[dates.length - 1],
+        windowLength: signalConfig.windowLength,
+        lambdaReg: signalConfig.lambdaReg,
+        quantile: signalConfig.quantile,
+        buyTickers: buyCandidates.map((s) => s.ticker),
+        sellTickers: sellCandidates.map((s) => s.ticker)
+      });
+    }
+
     return {
       status: 200,
       data: {
@@ -364,14 +380,18 @@ function createStrategyService(deps) {
         sellCandidates,
         latestDate: dates[dates.length - 1],
         metrics: { meanSignal: meanSig, stdSignal: stdSig },
-        sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources),
+        sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources, {
+          jpDataMode: config.data.mode,
+          usOhlcvProvider: config.data.usOhlcvProvider
+        }),
         opsDecision: buildOpsDecision({
           usSources: usRes.sources,
           jpSources: jpRes.sources,
           usErrors: usRes.errors,
           jpErrors: jpRes.errors,
           signalDataRecoveryAttempted,
-          insufficientData: false
+          insufficientData: false,
+          jpDataMode: config.data.mode
         }),
         ...(signalDataRecoveryAttempted
           ? {

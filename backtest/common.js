@@ -155,6 +155,15 @@ function writeStrategyOutputs(outputDir, summary, strategySeries) {
       `${s.name},${(s.m.AR * 100).toFixed(4)},${(s.m.RISK * 100).toFixed(4)},${s.m.RR.toFixed(4)},${(s.m.MDD * 100).toFixed(4)},${((s.m.Cumulative - 1) * 100).toFixed(4)}`
     ).join('\n');
   fs.writeFileSync(path.join(outputDir, 'backtest_summary_real.csv'), summaryCSV);
+  fs.writeFileSync(
+    path.join(outputDir, 'backtest_last_run.json'),
+    JSON.stringify(
+      { at: new Date().toISOString(), source: 'backtest/real', strategies: summary.map((s) => s.name) },
+      null,
+      2
+    ),
+    'utf8'
+  );
 
   for (const strat of strategySeries) {
     let cum = 1;

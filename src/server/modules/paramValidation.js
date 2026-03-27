@@ -1,7 +1,16 @@
 'use strict';
 
 function parseOptionalInt(value, { min, max, name }, errors) {
-  const parsed = parseInt(value, 10);
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    errors.push(`${name} must be a number`);
+    return undefined;
+  }
+  const strVal = String(value).trim();
+  if (!/^-?\d+$/.test(strVal)) {
+    errors.push(`${name} must be an integer`);
+    return undefined;
+  }
+  const parsed = parseInt(strVal, 10);
   if (Number.isNaN(parsed) || parsed < min || parsed > max) {
     errors.push(`${name} must be between ${min} and ${max}`);
     return undefined;
@@ -10,6 +19,10 @@ function parseOptionalInt(value, { min, max, name }, errors) {
 }
 
 function parseOptionalFloat(value, { min, max, name, minExclusive = false }, errors) {
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    errors.push(`${name} must be a number`);
+    return undefined;
+  }
   const parsed = parseFloat(value);
   const isInvalid =
     Number.isNaN(parsed) ||
