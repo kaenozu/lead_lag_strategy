@@ -166,6 +166,8 @@ function createApp() {
   app.use('/api/backtest', backtestLimiter);
   app.use('/api/backtest', apiKeyAuth);
   app.use('/api/signal', apiKeyAuth);
+  app.use('/api/config', apiKeyAuth);
+  app.put('/api/operating-rules', apiKeyAuth);
 
   registerStrategyRoutes(app, routeDeps);
   registerSystemRoutes(app, routeDeps);
