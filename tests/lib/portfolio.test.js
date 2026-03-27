@@ -128,8 +128,9 @@ describe('lib/portfolio', () => {
     test('取引コストを適用', () => {
       const ret = 0.01;
       const costs = { slippage: 0.001, commission: 0.0005 };
-      const result = portfolio.applyTransactionCosts(ret, costs);
-      
+      const currWeights = [0.5, -0.5];  // 初期構築時のウェイト
+      const result = portfolio.applyTransactionCosts(ret, costs, undefined, currWeights);
+
       expect(result).toBeLessThan(ret);
     });
 

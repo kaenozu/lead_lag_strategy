@@ -132,7 +132,8 @@ function runStrategy(retUs, retJp, retJpOc, config, labels, CFull, useMomentum =
         } else {
             const retUsWin = retUs.slice(start, i).map(r => r.values);
             const retJpWin = retJp.slice(start, i).map(r => r.values);
-            const retUsLatest = retUs[i].values;
+            // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+            const retUsLatest = retUs[i - 1].values;
             signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         }
         
@@ -155,7 +156,8 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         const start = i - config.windowLength;
         const retUsWin = retUs.slice(start, i).map(r => r.values);
         const retJpWin = retJp.slice(start, i).map(r => r.values);
-        const retUsLatest = retUs[i].values;
+        // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+        const retUsLatest = retUs[i - 1].values;
 
         const signalPca = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         
