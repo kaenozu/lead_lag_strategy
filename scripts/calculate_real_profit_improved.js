@@ -20,6 +20,12 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const { computePerformanceMetrics } = require('../lib/portfolio');
+const {
+  calculateVolatility,
+  calculateSectorPerformance,
+  getExcludedTickers,
+  buildPortfolioWithShortRatioAndFilter
+} = require('../lib/backtestUtils');
 
 const logger = createLogger('RealProfitImproved');
 
@@ -42,84 +48,6 @@ const IMPROVED_PARAMS = {
   volatilityThreshold: 0.02,
   volatilityReduction: 0.5
 };
-
-/**
- * ボラティリティ計算
- */
-function calculateVolatility(returns, lookback) {
-  if (returns.length < lookback) return 0;
-  const slice = returns.slice(-lookback);
-  const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
-  const variance = slice.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / slice.length;
-  return Math.sqrt(variance) * Math.sqrt(252);
-}
-
-/**
- * セクター別パフォーマンス計算
- */
-function calculateSectorPerformance(returnsJpOc, tickerIndex, lookback, startDate) {
-  const performance = {};
-  JP_ETF_TICKERS.forEach((ticker, idx) => {
-    const tickerReturns = [];
-    for (let i = startDate; i < returnsJpOc.length; i++) {
-      tickerReturns.push(returnsJpOc[i].values[idx]);
-    }
-    const wins = tickerReturns.filter(r => r > 0).length;
-    const total = tickerReturns.length;
-    const avgReturn = tickerReturns.reduce((a, b) => a + b, 0) / total;
-    performance[ticker] = {
-      ticker,
-      name: JP_ETF_NAMES[ticker],
-      winRate: total > 0 ? wins / total : 0,
-      avgReturn,
-      index: idx
-    };
-  });
-  return performance;
-}
-
-/**
- * 除外銘柄リスト作成
- */
-function getExcludedTickers(sectorPerformance, config) {
-  if (!config.sectorFilterEnabled) return new Set();
-  const excluded = new Set();
-  Object.values(sectorPerformance).forEach(sp => {
-    if (sp.winRate < config.sectorMinWinRate || sp.avgReturn < config.sectorMinReturn) {
-      excluded.add(sp.index);
-    }
-  });
-  return excluded;
-}
-
-/**
- * ショート比率調整付きポートフォリオ構築
- */
-function buildPortfolioWithShortRatioAndFilter(signal, quantile, shortRatio, excludedIndices) {
-  const n = signal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
-  const ranked = signal
-    .map((val, idx) => ({ val, idx }))
-    .filter(x => !excludedIndices.has(x.idx))
-    .sort((a, b) => a.val - b.val);
-
-  if (ranked.length === 0) return new Array(n).fill(0);
-
-  const adjustedQ = Math.min(q, Math.floor(ranked.length * quantile));
-  const actualQ = Math.max(1, adjustedQ);
-
-  const longIndices = ranked.slice(-actualQ).map(x => x.idx);
-  const shortIndices = ranked.slice(0, actualQ).map(x => x.idx);
-
-  const weights = new Array(n).fill(0);
-  const longWeight = 1.0 / actualQ;
-  const shortWeight = -(1.0 / actualQ) * shortRatio;
-
-  for (const idx of longIndices) weights[idx] = longWeight;
-  for (const idx of shortIndices) weights[idx] = shortWeight;
-
-  return weights;
-}
 
 /**
  * メイン処理
@@ -183,7 +111,6 @@ async function main() {
   // セクターパフォーマンス計算
   const sectorPerformance = calculateSectorPerformance(
     retJpOc,
-    null,
     IMPROVED_PARAMS.sectorLookback,
     warmupPeriod
   );
@@ -282,7 +209,7 @@ async function main() {
     if (IMPROVED_PARAMS.dailyLossStop > 0 && netReturn < -IMPROVED_PARAMS.dailyLossStop) {
       netReturn = -IMPROVED_PARAMS.dailyLossStop;
       positionClosed = true;
-    } else if (positionClosed && netReturn > 0) {
+    } else {
       positionClosed = false;
     }
 

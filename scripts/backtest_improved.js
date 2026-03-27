@@ -28,6 +28,12 @@ const {
   computePerformanceMetrics,
   applyTransactionCosts
 } = require('../lib/portfolio');
+const {
+  calculateVolatility,
+  calculateSectorPerformance,
+  getExcludedTickers,
+  buildPortfolioWithShortRatioAndFilter
+} = require('../lib/backtestUtils');
 
 const logger = createLogger('BacktestImproved');
 
@@ -59,113 +65,6 @@ const IMPROVED_CONFIG = {
 };
 
 /**
- * ボラティリティ計算
- */
-function calculateVolatility(returns, lookback) {
-  if (returns.length < lookback) {
-    return 0;
-  }
-  
-  const slice = returns.slice(-lookback);
-  const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
-  const variance = slice.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / slice.length;
-  
-  return Math.sqrt(variance) * Math.sqrt(252);
-}
-
-/**
- * セクター別パフォーマンス計算
- */
-function calculateSectorPerformance(returnsJpOc, tickerIndex, lookback, startDate) {
-  const performance = {};
-  
-  JP_ETF_TICKERS.forEach((ticker, idx) => {
-    const tickerReturns = [];
-    
-    for (let i = startDate; i < returnsJpOc.length; i++) {
-      tickerReturns.push(returnsJpOc[i].values[idx]);
-    }
-    
-    const wins = tickerReturns.filter(r => r > 0).length;
-    const total = tickerReturns.length;
-    const avgReturn = tickerReturns.reduce((a, b) => a + b, 0) / total;
-    
-    performance[ticker] = {
-      ticker,
-      name: JP_ETF_NAMES[ticker],
-      winRate: total > 0 ? wins / total : 0,
-      avgReturn,
-      index: idx
-    };
-  });
-  
-  return performance;
-}
-
-/**
- * 除外銘柄リスト作成
- */
-function getExcludedTickers(sectorPerformance, config) {
-  if (!config.sectorFilterEnabled) {
-    return new Set();
-  }
-  
-  const excluded = new Set();
-  
-  Object.values(sectorPerformance).forEach(sp => {
-    if (sp.winRate < config.sectorMinWinRate || sp.avgReturn < config.sectorMinReturn) {
-      excluded.add(sp.index);
-      logger.info(`除外銘柄：${sp.ticker} (${sp.name}) - 勝率：${(sp.winRate * 100).toFixed(1)}%, 平均リターン：${(sp.avgReturn * 100).toFixed(2)}%`);
-    }
-  });
-  
-  return excluded;
-}
-
-/**
- * ショート比率調整付きポートフォリオ構築
- */
-function buildPortfolioWithShortRatioAndFilter(
-  signal,
-  quantile,
-  shortRatio,
-  excludedIndices
-) {
-  const n = signal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
-
-  // 除外銘柄をフィルタリング
-  const ranked = signal
-    .map((val, idx) => ({ val, idx }))
-    .filter(x => !excludedIndices.has(x.idx))
-    .sort((a, b) => a.val - b.val);
-
-  if (ranked.length === 0) {
-    return new Array(n).fill(0);
-  }
-
-  // 調整後の銘柄数
-  const adjustedQ = Math.min(q, Math.floor(ranked.length * quantile));
-  const actualQ = Math.max(1, adjustedQ);
-
-  const longIndices = ranked.slice(-actualQ).map(x => x.idx);
-  const shortIndices = ranked.slice(0, actualQ).map(x => x.idx);
-
-  const weights = new Array(n).fill(0);
-  const longWeight = 1.0 / actualQ;
-  const shortWeight = -(1.0 / actualQ) * shortRatio;
-
-  for (const idx of longIndices) {
-    weights[idx] = longWeight;
-  }
-  for (const idx of shortIndices) {
-    weights[idx] = shortWeight;
-  }
-
-  return weights;
-}
-
-/**
  * 改善版バックテスト実行
  */
 function runImprovedBacktest(
@@ -194,11 +93,17 @@ function runImprovedBacktest(
   // セクターパフォーマンス計算（初回のみ）
   const sectorPerformance = calculateSectorPerformance(
     returnsJpOc,
-    null,
     params.sectorLookback,
     warmupPeriod
   );
   const excludedIndices = getExcludedTickers(sectorPerformance, params);
+
+  excludedIndices.forEach(idx => {
+    const sp = Object.values(sectorPerformance).find(s => s.index === idx);
+    if (sp) {
+      logger.info(`除外銘柄：${sp.ticker} (${sp.name}) - 勝率：${(sp.winRate * 100).toFixed(1)}%, 平均リターン：${(sp.avgReturn * 100).toFixed(2)}%`);
+    }
+  });
 
   logger.info(`除外銘柄数：${excludedIndices.size} / ${nJp}`);
 
@@ -269,11 +174,7 @@ function runImprovedBacktest(
       logger.info(`Day ${i}: Loss stop triggered (${(netReturn * 100).toFixed(2)}% < -${(params.dailyLossStop * 100).toFixed(1)}%)`);
       netReturn = -params.dailyLossStop;
       positionClosed = true;
-      
-      // 翌日は再開（簡易版）
-      setTimeout(() => { positionClosed = false; }, 0);
-    } else if (positionClosed && netReturn > 0) {
-      // 利益が出たら再開
+    } else {
       positionClosed = false;
     }
 

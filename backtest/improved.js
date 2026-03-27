@@ -12,6 +12,7 @@ const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 const { computeCFull, writeOhlcvCsvByTicker } = require('./common');
+const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
 
 // ============================================================================
 // 設定
@@ -189,28 +190,6 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
     }
     
     return results;
-}
-
-function averageMomentumWindow(retJp, start, end, nJp) {
-    const momentum = new Array(nJp).fill(0);
-    const window = end - start;
-    for (let j = start; j < end; j++) {
-        for (let k = 0; k < nJp; k++) {
-            momentum[k] += retJp[j].values[k];
-        }
-    }
-    for (let k = 0; k < nJp; k++) {
-        momentum[k] /= window;
-    }
-    return momentum;
-}
-
-function weightedReturn(weights, returns) {
-    let result = 0;
-    for (let i = 0; i < weights.length; i++) {
-        result += weights[i] * returns[i];
-    }
-    return result;
 }
 
 function totalReturnPercent(metrics) {
