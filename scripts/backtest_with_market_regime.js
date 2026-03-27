@@ -33,23 +33,27 @@ const SLIPPAGE_RATE = 0.001;
  */
 const BACKTEST_CONFIG = {
   // 最適パラメータ（ウォークフォワード結果）
-  lambdaReg: 0.7,
-  nFactors: 3,
-  quantile: 0.6,
+  lambdaReg: 0.5,
+  nFactors: 2,
+  quantile: 0.2,
+  shortRatio: 1.0,
+  useEwma: false,
+  ewmaHalflife: 30,
   
   // 市場環境フィルタ
   marketRegime: {
     enabled: true,
-    lookback: 200,
-    bullThreshold: 1.05,
-    bearThreshold: 0.95,
+    lookback: 60,            // 60日MA（実データ198日以上で動作）
+    bullThreshold: 1.02,     // MA比+2%超で強気判定
+    bearThreshold: 0.98,     // MA比-2%未満で弱気判定
     positionSizeBull: 1.0,
-    positionSizeBear: 0.0,  // 弱気時は取引停止
+    positionSizeBear: 0.0,   // 弱気時は取引停止（損失抑制）
     positionSizeNeutral: 0.5
   },
   
   // リスク管理
-  dailyLossStop: 0.02,
+  dailyLossStop: 0.01,
+  stopCooldownDays: 1,
   sectorFilterEnabled: true,
   sectorLookback: 60,
   sectorMinWinRate: 0.3,
@@ -121,7 +125,7 @@ function getExcludedTickers(sectorPerformance, config) {
 /**
  * ポートフォリオ構築
  */
-function buildPortfolio(signal, quantile, excludedIndices, positionSize = 1.0) {
+function buildPortfolio(signal, quantile, excludedIndices, positionSize = 1.0, shortRatio = 1.0) {
   const n = signal.length;
   const q = Math.max(1, Math.floor(n * quantile));
   
@@ -139,7 +143,7 @@ function buildPortfolio(signal, quantile, excludedIndices, positionSize = 1.0) {
 
   const weights = new Array(n).fill(0);
   const longWeight = (1.0 / actualQ) * positionSize;
-  const shortWeight = -(1.0 / actualQ) * positionSize;
+  const shortWeight = -(1.0 / actualQ) * positionSize * shortRatio;
 
   for (const idx of longIndices) weights[idx] = longWeight;
   for (const idx of shortIndices) weights[idx] = shortWeight;
@@ -160,16 +164,20 @@ function runBacktestWithMarketRegime(
   const nJp = returnsJpOc[0].values.length;
   const strategyReturns = [];
   let prevWeights = null;
-  let positionClosed = false;
+  const stopCooldownDays = Math.max(0, params.stopCooldownDays ?? BACKTEST_CONFIG.stopCooldownDays ?? 1);
+  let stopCooldownRemaining = 0;
 
   const signalGen = new LeadLagSignal({
     lambdaReg: params.lambdaReg,
     nFactors: params.nFactors,
+    useEwma: params.useEwma || false,
+    ewmaHalflife: params.ewmaHalflife || 30,
     orderedSectorKeys: config.pca.orderedSectorKeys
   });
 
   const windowLength = config.backtest.windowLength;
-  const warmupPeriod = Math.max(windowLength, params.marketRegime.lookback) + params.sectorLookback;
+  // 各判定に必要な最小履歴だけを warmup にする（過大な加算はしない）
+  const warmupPeriod = Math.max(windowLength, params.marketRegime.lookback, params.sectorLookback);
 
   // 米国価格系列
   const usPrices = buildUSPriceSeries(returnsUs);
@@ -191,6 +199,7 @@ function runBacktestWithMarketRegime(
     [MarketRegime.NEUTRAL]: { days: 0, return: 0 }
   };
 
+  // warmup 以降は、必要データがそろっているためシグナル計算を開始できる
   for (let i = warmupPeriod; i < returnsJpOc.length; i++) {
     // 市場環境判定
     const priceSlice = usPrices.slice(0, i + 1);
@@ -213,16 +222,23 @@ function runBacktestWithMarketRegime(
     );
 
     // ポートフォリオ構築（ポジションサイズ調整）
-    let weights = buildPortfolio(signal, params.quantile, excludedIndices, positionSize);
+    let weights = buildPortfolio(
+      signal,
+      params.quantile,
+      excludedIndices,
+      positionSize,
+      params.shortRatio ?? 1.0
+    );
 
-    // 損失ストップ発動中はポジションフラット
-    if (positionClosed) {
+    // 損失ストップ発動中はポジションを一定日数フラット化
+    const stopActive = stopCooldownRemaining > 0;
+    if (stopActive) {
       weights = new Array(nJp).fill(0);
     }
 
     // シグナル平滑化
     const smoothingAlpha = 0.3;
-    if (prevWeights && !positionClosed && positionSize > 0) {
+    if (prevWeights && !stopActive && positionSize > 0) {
       for (let j = 0; j < weights.length; j++) {
         weights[j] = smoothingAlpha * weights[j] + (1 - smoothingAlpha) * prevWeights[j];
       }
@@ -245,9 +261,11 @@ function runBacktestWithMarketRegime(
     // 日次損失ストップ
     if (params.dailyLossStop > 0 && netReturn < -params.dailyLossStop) {
       netReturn = -params.dailyLossStop;
-      positionClosed = true;
-    } else if (positionClosed && netReturn > 0) {
-      positionClosed = false;
+      stopCooldownRemaining = stopCooldownDays;
+    }
+
+    if (stopActive) {
+      stopCooldownRemaining--;
     }
 
     prevWeights = weights;
@@ -302,7 +320,7 @@ async function main() {
   console.log(`  中立時ポジション：${(BACKTEST_CONFIG.marketRegime.positionSizeNeutral * 100).toFixed(0)}%`);
 
   // データ取得
-  const winDays = 300;
+  const winDays = 500;
   console.log(`\n📡 市場データ取得中...`);
 
   const [usRes, jpRes] = await Promise.all([
@@ -461,12 +479,22 @@ async function main() {
   });
 }
 
-main().catch(error => {
-  logger.error('Backtest with market regime failed', {
-    error: error.message,
-    stack: error.stack
+if (require.main === module) {
+  main().catch(error => {
+    logger.error('Backtest with market regime failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    console.error('❌ エラー:', error.message);
+    console.error(error.stack);
+    process.exit(1);
   });
-  console.error('❌ エラー:', error.message);
-  console.error(error.stack);
-  process.exit(1);
-});
+}
+
+module.exports = {
+  BACKTEST_CONFIG,
+  buildUSPriceSeries,
+  calculateSectorPerformance,
+  buildPortfolio,
+  runBacktestWithMarketRegime
+};
