@@ -3,6 +3,7 @@
 const { __internal } = require('../../src/server/services/strategyService');
 
 const { computeOnePickTop1Backtest } = __internal;
+const { computeDailyBuyCandidatesBacktest } = __internal;
 
 function makeSeries(nDays, values) {
   return Array.from({ length: nDays }, (_, i) => ({
@@ -78,6 +79,65 @@ describe('strategyService one-pick backtest', () => {
       dailyProfitYen: -1,
       dailyReturnPct: -1
     });
+  });
+});
+
+describe('strategyService daily buy candidates backtest', () => {
+  test('computes basket daily profit and hit rate for buy candidates', () => {
+    const nDays = 4;
+    const retUs = makeSeries(nDays, [0.01]);
+    const retJp = makeSeries(nDays, [0.01, 0.0]);
+    const retJpOc = [
+      { date: '2026-01-01', values: [0.0, 0.0] },
+      { date: '2026-01-02', values: [0.02, -0.01] },
+      { date: '2026-01-03', values: [-0.03, 0.01] },
+      { date: '2026-01-04', values: [0.01, 0.01] }
+    ];
+
+    const signalGen = {
+      computeSignal: jest
+        .fn()
+        .mockReturnValueOnce([0.9, 0.1]) // pick A
+        .mockReturnValueOnce([0.8, 0.2]) // pick A
+        .mockReturnValueOnce([0.7, 0.3]) // pick A
+    };
+
+    const jpData = {
+      'A.T': [
+        { date: '2026-01-02', open: 100, close: 102 }, // +2
+        { date: '2026-01-03', open: 100, close: 97 }, // -3
+        { date: '2026-01-04', open: 100, close: 101 } // +1
+      ],
+      'B.T': [
+        { date: '2026-01-02', open: 100, close: 99 },
+        { date: '2026-01-03', open: 100, close: 101 },
+        { date: '2026-01-04', open: 100, close: 101 }
+      ]
+    };
+
+    const result = computeDailyBuyCandidatesBacktest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig: { windowLength: 1, quantile: 0.4 },
+      signalGen,
+      sectorLabels: {},
+      CFull: [[1, 0], [0, 1]],
+      jpData,
+      jpTickers: ['A.T', 'B.T']
+    });
+
+    expect(result.mode).toBe('daily_buy_candidates_each_1_share_sell_at_close');
+    expect(result.buyCount).toBe(1);
+    expect(result.tradedDays).toBe(3);
+    expect(result.totalProfitYen).toBe(0); // +2 -3 +1
+    expect(result.hitRatePct).toBeCloseTo(66.67, 2);
+    expect(result.winDays).toBe(2);
+    expect(result.lossDays).toBe(1);
+    expect(result.flatDays).toBe(0);
+    expect(result.last7Days.tradedDays).toBe(3);
+    expect(result.last7Days.totalProfitYen).toBe(0);
+    expect(result.last7Days.days).toHaveLength(3);
   });
 });
 
