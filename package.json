@@ -2,7 +2,7 @@
   "name": "lead_lag_strategy",
   "version": "1.0.0",
   "description": "日米業種 ETF のリードラグ戦略（部分空間正則化 PCA）のバックテスト・シグナル生成ツール",
-  "main": "backtest/basic.js",
+  "main": "src/server.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/kaenozu/lead_lag_strategy.git"
