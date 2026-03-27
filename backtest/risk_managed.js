@@ -29,10 +29,10 @@ const BASE_CONFIG = {
 
 // リスク管理パラメータ
 const RISK_CONFIG = {
-  maxPositionSize: 0.10,      // 最大ポジションサイズ（10%）
-  maxTotalExposure: 0.60,     // 最大エクスポージャー（60%）
+  maxPositionSize: 0.25,      // 最大ポジションサイズ（25%）
+  maxTotalExposure: 1.50,     // 最大エクスポージャー（150%）
   volatilityTarget: 0.08,     // 目標ボラティリティ（8%）
-  maxDrawdownLimit: 0.10,     // 最大ドローダウン（10%）
+  maxDrawdownLimit: 0.15,     // 最大ドローダウン（15%）
   stopLoss: 0.05             // ストップロス（5%）
 };
 
@@ -185,7 +185,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     ...config,
     orderedSectorKeys: appConfig.pca.orderedSectorKeys
   });
-  const totalCost = TRANSACTION_COSTS.slippage + TRANSACTION_COSTS.commission;
+  const totalCostRate = TRANSACTION_COSTS.slippage + TRANSACTION_COSTS.commission;
 
   // リスク管理用変数
   let cumulative = 1;
@@ -194,6 +194,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
   let rollingVolatility = 0.10;
   const volWindow = 20;
   const recentReturns = [];
+  let prevWeights = null;
 
   for (let i = config.warmupPeriod; i < retJpOc.length; i++) {
     const start = i - config.windowLength;
@@ -223,8 +224,13 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     let stratRet = 0;
     for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
 
-    // 取引コスト
-    stratRet = stratRet - totalCost;
+    // 取引コスト（ターンオーバーベース）
+    if (prevWeights) {
+      let tv = 0;
+      for (let j = 0; j < nJp; j++) tv += Math.abs(weights[j] - prevWeights[j]);
+      tv /= 2;
+      stratRet -= tv * totalCostRate;
+    }
 
     results.push({ date: retJpOc[i].date, return: stratRet, weights: [...weights] });
 
@@ -236,6 +242,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     // ボラティリティ履歴更新
     recentReturns.push(stratRet);
     if (recentReturns.length > volWindow) recentReturns.shift();
+    prevWeights = weights;
   }
 
   return results;

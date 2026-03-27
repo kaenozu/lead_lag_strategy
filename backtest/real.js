@@ -97,9 +97,8 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
   const signalGenerator = new LeadLagSignal(config);
   let prevWeights = null;
 
-  // 連続損失ルール：カウンターとポジションサイズ
-  let consecutiveLoss = 0;
-  let positionSize = 1.0;
+  // 連続損失ルール：前日までの連続損失数で当日のポジションサイズを決定（ルックアヘッド回避）
+  let prevConsecutiveLoss = 0;
   const consecutiveLossThreshold = Number(config?.consecutiveLoss?.threshold || 0);
   const consecutiveLossReduction = Number(config?.consecutiveLoss?.reduction || 0);
 
@@ -111,6 +110,13 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     // 注意：returnsUs[i] は t 日の米国リターンであり、日本市場が営業中の t 日には観測できない
     // したがって、returnsUs[i-1]（t-1 日の米国リターン）を使用する
     const retUsLatest = returnsUs[i - 1].values;
+
+    // ポジションサイズは前日の連続損失カウントで決定（当日リターンを見ない）
+    let positionSize = 1.0;
+    if (Number.isFinite(consecutiveLossThreshold) && consecutiveLossThreshold > 0 &&
+        prevConsecutiveLoss >= consecutiveLossThreshold) {
+      positionSize = 1.0 - consecutiveLossReduction;
+    }
 
     let weights;
 
@@ -136,6 +142,9 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       weights = buildPortfolio(signal, config.quantile);
     }
 
+    // ポジションサイズ適用（連続損失時は縮小）
+    weights = weights.map(w => w * positionSize);
+
     // シグナル平滑化＋ポジション上限
     const smoothingAlpha = Number(config?.signalStability?.smoothingAlpha || 0);
     weights = smoothWeights(prevWeights, weights, smoothingAlpha);
@@ -145,7 +154,6 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
     const maxTurnoverPerDay = Number(config?.signalStability?.maxTurnoverPerDay || 1);
     const todayTurnover = turnover(prevWeights, weights);
     if (prevWeights && Number.isFinite(maxTurnoverPerDay) && maxTurnoverPerDay > 0 && todayTurnover > maxTurnoverPerDay) {
-      // 売買のみ抑制し、当日の損益計上は継続する（前日ポジションを維持）
       weights = prevWeights;
     }
 
@@ -166,21 +174,13 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       strategyRet = Math.max(strategyRet, -dailyLossStop);
     }
 
-    // 連続損失ルール：ポジションサイズ調整
+    // 連続損失カウント更新（翌日のポジションサイズ決定用）
     if (Number.isFinite(consecutiveLossThreshold) && consecutiveLossThreshold > 0) {
       if (strategyRet < 0) {
-        consecutiveLoss++;
-        if (consecutiveLoss >= consecutiveLossThreshold) {
-          // 閾値に達した場合、ポジションを削減
-          positionSize = 1.0 - consecutiveLossReduction;
-        }
+        prevConsecutiveLoss++;
       } else {
-        // 利益が出た場合はリセット
-        consecutiveLoss = 0;
-        positionSize = 1.0;
+        prevConsecutiveLoss = 0;
       }
-      // ポジションサイズを適用
-      strategyRet = strategyRet * positionSize;
     }
 
     prevWeights = weights;
@@ -225,28 +225,6 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   }
 
   return { returns: strategyReturns, dates };
-}
-
-function averageMomentumWindow(returnsJp, start, end, nJp) {
-  const momentum = new Array(nJp).fill(0);
-  const window = end - start;
-  for (let j = start; j < end; j++) {
-    for (let k = 0; k < nJp; k++) {
-      momentum[k] += returnsJp[j].values[k];
-    }
-  }
-  for (let k = 0; k < nJp; k++) {
-    momentum[k] /= window;
-  }
-  return momentum;
-}
-
-function weightedReturn(weights, returns) {
-  let result = 0;
-  for (let i = 0; i < weights.length; i++) {
-    result += weights[i] * returns[i];
-  }
-  return result;
 }
 
 // ============================================================================
