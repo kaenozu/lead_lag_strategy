@@ -9,10 +9,12 @@ const {
 
 describe('lib/portfolio/risk', () => {
   describe('applyTransactionCosts', () => {
+    const currWeights = [0.5, -0.5];  // 初期構築時のウェイト（グロス 100%）
+
     test('取引コストを適用', () => {
       const ret = 0.01;
       const costs = { slippage: 0.001, commission: 0.0005 };
-      const result = applyTransactionCosts(ret, costs);
+      const result = applyTransactionCosts(ret, costs, undefined, currWeights);
 
       expect(result).toBeLessThan(ret);
     });
@@ -32,7 +34,7 @@ describe('lib/portfolio/risk', () => {
     test('スリッページのみ', () => {
       const ret = 0.01;
       const costs = { slippage: 0.002 };
-      const result = applyTransactionCosts(ret, costs);
+      const result = applyTransactionCosts(ret, costs, undefined, currWeights);
 
       expect(result).toBeLessThan(ret);
     });
@@ -40,7 +42,7 @@ describe('lib/portfolio/risk', () => {
     test('手数料のみ', () => {
       const ret = 0.01;
       const costs = { commission: 0.002 };
-      const result = applyTransactionCosts(ret, costs);
+      const result = applyTransactionCosts(ret, costs, undefined, currWeights);
 
       expect(result).toBeLessThan(ret);
     });
@@ -48,7 +50,7 @@ describe('lib/portfolio/risk', () => {
     test('コストがリターンより大きい場合', () => {
       const ret = 0.001;
       const costs = { slippage: 0.01, commission: 0.01 };
-      const result = applyTransactionCosts(ret, costs);
+      const result = applyTransactionCosts(ret, costs, undefined, currWeights);
 
       expect(result).toBeLessThan(0);
     });
@@ -56,7 +58,7 @@ describe('lib/portfolio/risk', () => {
     test('負のリターンに適用', () => {
       const ret = -0.01;
       const costs = { slippage: 0.001, commission: 0.0005 };
-      const result = applyTransactionCosts(ret, costs);
+      const result = applyTransactionCosts(ret, costs, undefined, currWeights);
 
       expect(result).toBeLessThan(ret);
     });
