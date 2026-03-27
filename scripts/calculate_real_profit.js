@@ -51,7 +51,7 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
   
   console.log(`\n📅 計算期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`💰 初期資金：1,000,000 円`);
+  console.log('💰 初期資金：1,000,000 円');
   console.log(`📈 取引コスト：${(TRANSACTION_COST_RATE * 100).toFixed(2)}%`);
   console.log(`📉 スリッページ：${(SLIPPAGE_RATE * 100).toFixed(2)}%`);
   
@@ -99,7 +99,7 @@ async function main() {
   
   // 過去 1 ヶ月の営業日を特定
   const endDate = retUs.length - 1;
-  const startDate = Math.max(0, endDate - 30); // 約 30 営業日前
+  const startDate = Math.max(0, endDate - Math.round(getTradingDaysInLastMonth())); // 約 1 ヶ月前
   
   console.log(`\n📈 評価期間：${retUs[startDate].date} ~ ${retUs[endDate].date}`);
   
@@ -263,7 +263,7 @@ async function main() {
   console.log('\n' + '='.repeat(80));
   console.log('📊 総合結果（過去 1 ヶ月）');
   console.log('='.repeat(80));
-  console.log(`初期資金：        1,000,000 円`);
+  console.log('初期資金：        1,000,000 円');
   console.log(`最終資金：        ${capital.toLocaleString(undefined, { maximumFractionDigits: 0 })} 円`);
   console.log('-'.repeat(80));
   console.log(`総損益：          ${totalProfit >= 0 ? '+' : ''}${totalProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} 円`);
