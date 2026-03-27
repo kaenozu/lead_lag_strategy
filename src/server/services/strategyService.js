@@ -17,6 +17,95 @@ function toDisplayMetrics(raw, dayCount) {
   };
 }
 
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function buildJpBarLookupByTickerDate(jpData, tickers) {
+  const lookup = {};
+  for (const ticker of tickers) {
+    const dateMap = new Map();
+    const rows = Array.isArray(jpData[ticker]) ? jpData[ticker] : [];
+    for (const row of rows) {
+      if (row && row.date) {
+        dateMap.set(row.date, row);
+      }
+    }
+    lookup[ticker] = dateMap;
+  }
+  return lookup;
+}
+
+function topSignalIndex(signal) {
+  let bestIdx = 0;
+  let bestVal = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < signal.length; i++) {
+    if (signal[i] > bestVal) {
+      bestVal = signal[i];
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function computeOnePickTop1Backtest({
+  retUs,
+  retJp,
+  retJpOc,
+  signalConfig,
+  signalGen,
+  sectorLabels,
+  CFull,
+  jpData,
+  jpTickers
+}) {
+  const windowLength = signalConfig.windowLength;
+  const barsByTicker = buildJpBarLookupByTickerDate(jpData, jpTickers);
+
+  let cumulativeProfitYen = 0;
+  let cumulativeReturn = 1;
+  let tradedDays = 0;
+  let lastTrade = null;
+
+  for (let i = windowLength; i < retJpOc.length; i++) {
+    const start = i - windowLength;
+    const retUsWin = retUs.slice(start, i).map((r) => r.values);
+    const retJpWin = retJp.slice(start, i).map((r) => r.values);
+    const retUsLatest = retUs[i - 1].values;
+    const signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, sectorLabels, CFull);
+    const idx = topSignalIndex(signal);
+    const ticker = jpTickers[idx];
+    const date = retJpOc[i].date;
+    const dailyReturn = retJpOc[i].values[idx];
+
+    const bar = barsByTicker[ticker] ? barsByTicker[ticker].get(date) : null;
+    let dailyProfitYen = dailyReturn;
+    if (bar && Number.isFinite(bar.open) && Number.isFinite(bar.close) && bar.open > 0) {
+      dailyProfitYen = bar.close - bar.open;
+    }
+
+    tradedDays += 1;
+    cumulativeProfitYen += dailyProfitYen;
+    cumulativeReturn *= (1 + dailyReturn);
+    lastTrade = {
+      date,
+      ticker,
+      dailyProfitYen: round2(dailyProfitYen),
+      dailyReturnPct: round2(dailyReturn * 100)
+    };
+  }
+
+  return {
+    mode: 'one_share_top1_open_close',
+    totalDays: Math.max(0, retJpOc.length - windowLength),
+    tradedDays,
+    totalProfitYen: round2(cumulativeProfitYen),
+    cumulativeReturnPct: round2((cumulativeReturn - 1) * 100),
+    averageDailyProfitYen: tradedDays > 0 ? round2(cumulativeProfitYen / tradedDays) : 0,
+    lastTrade
+  };
+}
+
 function createStrategyService(deps) {
   const {
     config,
@@ -245,7 +334,7 @@ function createStrategyService(deps) {
     let usData = usRes.byTicker;
     let jpData = jpRes.byTicker;
 
-    let { retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
+    let { retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
       usData,
       jpData,
       US_ETF_TICKERS,
@@ -263,7 +352,7 @@ function createStrategyService(deps) {
       ]);
       usData = usRes.byTicker;
       jpData = jpRes.byTicker;
-      ({ retUs, retJp, dates } = buildReturnMatricesFromOhlcv(
+      ({ retUs, retJp, retJpOc, dates } = buildReturnMatricesFromOhlcv(
         usData,
         jpData,
         US_ETF_TICKERS,
@@ -319,6 +408,17 @@ function createStrategyService(deps) {
     const retJpWin = retJp.slice(-signalConfig.windowLength).map(r => r.values);
     const retUsLatest = retUs[retUs.length - 1].values;
     const signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, config.sectorLabels, CFull);
+    const onePickBacktest = computeOnePickTop1Backtest({
+      retUs,
+      retJp,
+      retJpOc,
+      signalConfig,
+      signalGen,
+      sectorLabels: config.sectorLabels,
+      CFull,
+      jpData,
+      jpTickers: JP_ETF_TICKERS
+    });
 
     const signals = JP_ETF_TICKERS.map((ticker, i) => ({
       ticker,
@@ -380,6 +480,7 @@ function createStrategyService(deps) {
         sellCandidates,
         latestDate: dates[dates.length - 1],
         metrics: { meanSignal: meanSig, stdSignal: stdSig },
+        onePickBacktest,
         sourceSummary: summarizeSignalSourcePaths(usRes.sources, jpRes.sources, {
           jpDataMode: config.data.mode,
           usOhlcvProvider: config.data.usOhlcvProvider
@@ -411,6 +512,11 @@ function createStrategyService(deps) {
 }
 
 module.exports = {
-  createStrategyService
+  createStrategyService,
+  __internal: {
+    buildJpBarLookupByTickerDate,
+    topSignalIndex,
+    computeOnePickTop1Backtest
+  }
 };
 
