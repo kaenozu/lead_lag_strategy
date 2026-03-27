@@ -1,7 +1,8 @@
 /**
  * 推奨作業の一括実行（タスクスケジューラ / cron 向け）
  *
- * 既定: doctor（軽量）→ CLI シグナル → ペーパー・ジャーナル（バックテストは省略＝毎日回しやすい）
+ * 既定: doctor（軽量）→ CLI シグナル → 戦略検証（GO/STOP）→ ペーパー・ジャーナル
+ *       （バックテストは省略＝毎日回しやすい）
  * 初回・パラメータ変更後: --with-backtest / --doctor-full を付与
  *
  * 例:
@@ -9,6 +10,7 @@
  *   npm run workflow -- --with-backtest
  *   npm run workflow -- --doctor-full --with-backtest
  *   npm run workflow -- --skip-paper --no-signal
+ *   npm run workflow -- --skip-strategy-status
  */
 
 'use strict';
@@ -39,6 +41,7 @@ function main() {
   const fullDoctor = argv.includes('--doctor-full');
   const skipPaper = argv.includes('--skip-paper');
   const noSignal = argv.includes('--no-signal');
+  const skipStrategyStatus = argv.includes('--skip-strategy-status');
 
   console.log('='.repeat(60));
   console.log('lead_lag_strategy — 自動ワークフロー (npm run workflow)');
@@ -68,6 +71,17 @@ function main() {
     if (code !== 0) {
       process.exit(code);
     }
+  }
+
+  if (!skipStrategyStatus) {
+    code = run('戦略検証 (GO/STOP)', 'node', ['scripts/strategy_status.js']);
+    // strategy_status は STOP 時に非ゼロ終了する。
+    // 運用上の判定結果として表示し、ワークフロー自体は継続する。
+    if (code !== 0) {
+      console.log('\n[workflow] 戦略検証の判定は STOP でした（処理は継続します）。');
+    }
+  } else {
+    console.log('\n── 戦略検証 ──\n（スキップ。必要なときは npm run strategy:status）\n');
   }
 
   if (!skipPaper) {
