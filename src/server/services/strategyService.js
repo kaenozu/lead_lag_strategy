@@ -692,7 +692,10 @@ function createStrategyService(deps) {
       };
     }
 
-    const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
+    const minLen = Math.min(retUs.length, retJp.length);
+    const retUsAligned = retUs.slice(0, minLen);
+    const retJpAligned = retJp.slice(0, minLen);
+    const combined = retUsAligned.map((r, i) => [...r.values, ...retJpAligned[i].values]);
     const CFull = correlationMatrixSample(combined);
     const signalGen = new LeadLagSignal(signalConfig);
     const retUsWin = retUs.slice(-signalConfig.windowLength).map(r => r.values);

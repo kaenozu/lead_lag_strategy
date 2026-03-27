@@ -70,7 +70,12 @@ function registerPaperRoutes(app, deps) {
 
   app.put('/api/operating-rules', ensureRole(['admin']), (req, res) => {
     try {
-      const rulesPath = saveOperatingRules(config, req.body || {});
+      const rules = req.body || {};
+      if (typeof rules !== 'object' || Array.isArray(rules)) {
+        return res.status(400).json({ error: 'invalid payload: expected object' });
+      }
+      const sanitized = JSON.parse(JSON.stringify(rules));
+      const rulesPath = saveOperatingRules(config, sanitized);
       writeAudit('operating_rules.save', { path: rulesPath });
       res.json({ ok: true, path: rulesPath });
     } catch (error) {
@@ -79,12 +84,12 @@ function registerPaperRoutes(app, deps) {
     }
   });
 
-  app.get('/api/paper/order-csv', ensureRole(['viewer', 'trader', 'admin']), (req, res) => {
+  app.get('/api/paper/order-csv', ensureRole(['viewer', 'trader', 'admin']), async (req, res) => {
     const cash = resolveCashAmount(req.query.cash, config.trading.initialCapital);
     const signalPath = outputPath(config, 'signal.json');
 
     try {
-      const signalDoc = JSON.parse(fs.readFileSync(signalPath, 'utf8'));
+      const signalDoc = JSON.parse(await fs.promises.readFile(signalPath, 'utf8'));
       const csv = buildOrderCsv(signalDoc, cash);
       const inline = String(req.query.inline || '') === '1';
 

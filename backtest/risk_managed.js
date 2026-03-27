@@ -199,7 +199,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     const start = i - config.windowLength;
     const retUsWin = retUs.slice(start, i).map(r => r.values);
     const retJpWin = retJp.slice(start, i).map(r => r.values);
-    const retUsLatest = retUs[i].values;
+    const retUsLatest = retUs[i - 1].values;
 
     const signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
 

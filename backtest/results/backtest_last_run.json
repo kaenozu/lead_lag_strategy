@@ -1,0 +1,9 @@
+{
+  "at": "2026-03-27T14:22:59.766Z",
+  "source": "backtest/real",
+  "strategies": [
+    "MOM",
+    "PCA PLAIN",
+    "PCA SUB"
+  ]
+}

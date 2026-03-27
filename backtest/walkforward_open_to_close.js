@@ -117,7 +117,7 @@ async function main() {
     const windowStart = i - config.backtest.windowLength;
     const retUsWindow = retUs.slice(windowStart, i).map((r) => r.values);
     const retJpWindow = retJp.slice(windowStart, i).map((r) => r.values);
-    const retUsLatest = retUs[i].values;
+    const retUsLatest = retUs[i - 1].values;
     const CFull = correlationMatrixSample(
       retUsWindow.map((r, k) => [...r, ...retJpWindow[k]])
     );
