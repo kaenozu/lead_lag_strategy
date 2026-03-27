@@ -125,21 +125,18 @@ function runStrategy(retUs, retJp, retJpOc, config, labels, CFull, useMomentum =
         let signal;
         
         if (useMomentum) {
-            signal = new Array(nJp).fill(0);
-            for (let j = start; j < i; j++)
-                for (let k = 0; k < nJp; k++) signal[k] += retJp[j].values[k];
-            signal = signal.map(x => x / config.windowLength);
+            signal = averageMomentumWindow(retJp, start, i, nJp);
         } else {
             const retUsWin = retUs.slice(start, i).map(r => r.values);
             const retJpWin = retJp.slice(start, i).map(r => r.values);
-            const retUsLatest = retUs[i].values;
+            // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+            const retUsLatest = retUs[i - 1].values;
             signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         }
         
         const weights = buildPortfolio(signal, config.quantile);
         const retNext = retJpOc[i].values;
-        let stratRet = 0;
-        for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
+        const stratRet = weightedReturn(weights, retNext);
         results.push({ date: retJpOc[i].date, return: stratRet });
     }
     
@@ -155,14 +152,11 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         const start = i - config.windowLength;
         const retUsWin = retUs.slice(start, i).map(r => r.values);
         const retJpWin = retJp.slice(start, i).map(r => r.values);
-        const retUsLatest = retUs[i].values;
+        // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+        const retUsLatest = retUs[i - 1].values;
 
         const signalPca = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
-        
-        const signalMom = new Array(nJp).fill(0);
-        for (let j = start; j < i; j++)
-            for (let k = 0; k < nJp; k++) signalMom[k] += retJp[j].values[k];
-        for (let k = 0; k < nJp; k++) signalMom[k] /= config.windowLength;
+        const signalMom = averageMomentumWindow(retJp, start, i, nJp);
         
         // ダブルソート（各シグナルを 3 等分）
         const sortedPca = [...signalPca].sort((a, b) => a - b);
@@ -190,12 +184,39 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         }
         
         const retNext = retJpOc[i].values;
-        let stratRet = 0;
-        for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
+        const stratRet = weightedReturn(weights, retNext);
         results.push({ date: retJpOc[i].date, return: stratRet });
     }
     
     return results;
+}
+
+function averageMomentumWindow(retJp, start, end, nJp) {
+    const momentum = new Array(nJp).fill(0);
+    const window = end - start;
+    for (let j = start; j < end; j++) {
+        for (let k = 0; k < nJp; k++) {
+            momentum[k] += retJp[j].values[k];
+        }
+    }
+    for (let k = 0; k < nJp; k++) {
+        momentum[k] /= window;
+    }
+    return momentum;
+}
+
+function weightedReturn(weights, returns) {
+    let result = 0;
+    for (let i = 0; i < weights.length; i++) {
+        result += weights[i] * returns[i];
+    }
+    return result;
+}
+
+function totalReturnPercent(metrics) {
+    if (metrics.Total !== undefined) return metrics.Total;
+    if (metrics.Cumulative !== undefined) return (metrics.Cumulative - 1) * 100;
+    return 0;
 }
 
 // ============================================================================
@@ -238,7 +259,12 @@ function optimizeParams(retUs, retJp, retJpOc, labels, CFull) {
     }
     
     generateCombinations(0, {});
-    
+    if (!bestConfig || !bestMetrics) {
+        const err = new Error('パラメータ最適化に失敗しました（有効な組み合わせがありません）');
+        err.code = 'OPTIMIZATION_FAILED';
+        throw err;
+    }
+
     console.log(`最適パラメータ: λ=${bestConfig.lambdaReg}, window=${bestConfig.windowLength}, q=${bestConfig.quantile}`);
     return { config: bestConfig, metrics: bestMetrics };
 }
@@ -321,7 +347,7 @@ async function main() {
     ];
     
     for (const { name, m } of summary) {
-        const total = m.Total !== undefined ? m.Total : m.Cumulative !== undefined ? (m.Cumulative - 1) * 100 : 0;
+        const total = totalReturnPercent(m);
         console.log(
             name.padEnd(15) +
             (m.AR || 0).toFixed(2).padStart(10) +
@@ -335,7 +361,7 @@ async function main() {
     // 結果保存
     const summaryCSV = 'Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)\n' +
         summary.map(s => {
-            const total = s.m.Total !== undefined ? s.m.Total : s.m.Cumulative !== undefined ? (s.m.Cumulative - 1) * 100 : 0;
+            const total = totalReturnPercent(s.m);
             return `${s.name},${(s.m.AR || 0).toFixed(4)},${(s.m.RISK || 0).toFixed(4)},${(s.m.RR || 0).toFixed(4)},${(s.m.MDD || 0).toFixed(4)},${total.toFixed(4)}`;
         }).join('\n');
     fs.writeFileSync(path.join(outputDir, 'backtest_summary_improved.csv'), summaryCSV);

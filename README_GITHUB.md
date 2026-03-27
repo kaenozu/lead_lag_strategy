@@ -97,9 +97,9 @@ PORT=3000
 
 ## 📚 ドキュメント
 
+- [docs/INDEX.md](docs/INDEX.md) - ドキュメント索引（最初にここ）
 - [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md) - 初心者向け完全ガイド
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) - プロジェクト計画
-- [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md) - 実装完了レポート
+- [docs/TESTING.md](docs/TESTING.md) - テスト・品質ゲート
 
 ## 🛠️ 開発
 
