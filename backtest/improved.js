@@ -192,27 +192,6 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
     return results;
 }
 
-function averageMomentumWindow(retJp, start, end, nJp) {
-    const momentum = new Array(nJp).fill(0);
-    const window = end - start;
-    for (let j = start; j < end; j++) {
-        for (let k = 0; k < nJp; k++) {
-            momentum[k] += retJp[j].values[k];
-        }
-    }
-    for (let k = 0; k < nJp; k++) {
-        momentum[k] /= window;
-    }
-    return momentum;
-}
-
-function weightedReturn(weights, returns) {
-    let result = 0;
-    for (let i = 0; i < weights.length; i++) {
-        result += weights[i] * returns[i];
-    }
-    return result;
-}
 function totalReturnPercent(metrics) {
     if (metrics.Total !== undefined) return metrics.Total;
     if (metrics.Cumulative !== undefined) return (metrics.Cumulative - 1) * 100;
