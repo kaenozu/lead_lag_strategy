@@ -167,11 +167,11 @@ function generateTransactionHistory() {
  * Convert report to Markdown format
  */
 function convertToMarkdown(report) {
-  let md = `# 日米業種リードラグ戦略レポート\n\n`;
+  let md = '# 日米業種リードラグ戦略レポート\n\n';
   md += `**生成日時:** ${report.generatedAt}\n`;
   md += `**レポートタイプ:** ${report.type}\n\n`;
   
-  md += `---\n\n`;
+  md += '---\n\n';
   
   for (const [key, section] of Object.entries(report.sections)) {
     md += `## ${section.title}\n\n`;
@@ -187,23 +187,23 @@ function convertToMarkdown(report) {
               md += `- ${JSON.stringify(item)}\n`;
             }
           }
-          md += `\n`;
+          md += '\n';
         } else if (typeof v === 'object' && v !== null) {
           md += `### ${formatKey(k)}\n\n`;
           for (const [subK, subV] of Object.entries(v)) {
             md += `- **${formatKey(subK)}:** ${subV}\n`;
           }
-          md += `\n`;
+          md += '\n';
         } else {
           md += `- **${formatKey(k)}:** ${v}\n`;
         }
       }
     }
     
-    md += `\n---\n\n`;
+    md += '\n---\n\n';
   }
   
-  md += `\n*このレポートは自動生成されました*\n`;
+  md += '\n*このレポートは自動生成されました*\n';
   
   return md;
 }

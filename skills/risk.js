@@ -8,7 +8,7 @@ const { createSkill } = require('./skill-base');
 const { fetchOhlcvForTickers, buildReturnMatricesFromOhlcv } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 const { config } = require('../lib/config');
-const { correlationMatrixSample, covarianceMatrix } = require('../lib/math');
+const { correlationMatrixSample } = require('../lib/math');
 
 module.exports = createSkill({
   name: 'risk',
@@ -54,8 +54,6 @@ module.exports = createSkill({
       US_ETF_TICKERS,
       JP_ETF_TICKERS
     );
-    
-    const allReturns = [...returnsUs, ...returnsJp].filter(r => r.length > 0);
     
     // 3. ボラティリティ計算
     console.log('📉 ボラティリティ計算中...');
@@ -150,7 +148,7 @@ module.exports = createSkill({
     const targetVol = skillConfig.targetVolatility;
     
     // ボラティリティターゲットに基づくポジションサイズ
-    const volScaling = targetVol / avgVol;
+    const volScaling = avgVol > 0 ? targetVol / avgVol : 0;
     
     results.positionLimits = {
       targetVolatility: targetVol,

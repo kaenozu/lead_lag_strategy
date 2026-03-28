@@ -63,7 +63,7 @@ module.exports = createSkill({
     
     // 2. リターン行列構築
     console.log('📊 リターン行列構築中...');
-    const { returnsUs, returnsJp, dates } = buildReturnMatricesFromOhlcv(
+    const { returnsUs, returnsJp } = buildReturnMatricesFromOhlcv(
       fetchResult.byTicker,
       US_ETF_TICKERS,
       JP_ETF_TICKERS

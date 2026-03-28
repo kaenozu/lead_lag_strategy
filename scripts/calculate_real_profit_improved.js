@@ -62,8 +62,8 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 計算期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`💰 初期資金: 1,000,000 円`);
-  console.log(`\n🚀 改善パラメータ:`);
+  console.log('💰 初期資金: 1,000,000 円');
+  console.log('\n🚀 改善パラメータ:');
   console.log(`  lambdaReg: ${IMPROVED_PARAMS.lambdaReg}`);
   console.log(`  nFactors: ${IMPROVED_PARAMS.nFactors}`);
   console.log(`  quantile: ${IMPROVED_PARAMS.quantile}`);
@@ -72,7 +72,7 @@ async function main() {
 
   // データ取得
   const winDays = IMPROVED_PARAMS.sectorLookback + config.backtest.windowLength + 80;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
@@ -284,7 +284,7 @@ async function main() {
   console.log('\n' + '='.repeat(80));
   console.log('📊 総合結果（過去 1 ヶ月・改善版）');
   console.log('='.repeat(80));
-  console.log(`初期資金：        1,000,000 円`);
+  console.log('初期資金：        1,000,000 円');
   console.log(`最終資金：        ${capital.toLocaleString(undefined, { maximumFractionDigits: 0 })} 円`);
   console.log('-'.repeat(80));
   console.log(`総損益：          ${totalProfit >= 0 ? '+' : ''}${totalProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} 円`);

@@ -312,7 +312,7 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 市場環境フィルタ設定:`);
+  console.log('\n📋 市場環境フィルタ設定:');
   console.log(`  強気閾値：${(BACKTEST_CONFIG.marketRegime.bullThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  弱気閾値：${(BACKTEST_CONFIG.marketRegime.bearThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  強気時ポジション：${(BACKTEST_CONFIG.marketRegime.positionSizeBull * 100).toFixed(0)}%`);
@@ -321,7 +321,7 @@ async function main() {
 
   // データ取得
   const winDays = 500;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),

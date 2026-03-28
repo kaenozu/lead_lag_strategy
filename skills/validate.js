@@ -194,6 +194,9 @@ function validateTickerData(ticker, data, config) {
   for (let i = 1; i < data.length; i++) {
     const prevClose = data[i - 1].close;
     const currClose = data[i].close;
+    if (!Number.isFinite(prevClose) || prevClose === 0) {
+      continue;
+    }
     const dailyReturn = (currClose - prevClose) / prevClose;
     
     if (Math.abs(dailyReturn) > config.thresholds.maxReturnAnomaly) {

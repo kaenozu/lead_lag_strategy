@@ -59,7 +59,7 @@ console.log('='.repeat(80));
 // Yahoo! ファイナンスからデータ取得（簡易版）
 async function fetchFromYahoo(ticker, startDate = '2010-01-01', endDate = '2025-12-31') {
   // ティッカー名のサニタイズ（パストラバーサル対策）
-  const safeTicker = ticker.replace(/[^a-zA-Z0-9.\-]/g, '_');
+  const safeTicker = ticker.replace(/[^a-zA-Z0-9.-]/g, '_');
   console.log(`  ${safeTicker}...`);
 
   try {
@@ -105,7 +105,7 @@ function saveToCSV(data, filePath) {
 async function main() {
   console.log('\nデータ取得開始...');
   console.log(`  対象ティッカー：${TOPIX_SECTOR_ETF_TICKERS.length}件`);
-  console.log(`  期間：2010-01-01 〜 2025-12-31`);
+  console.log('  期間：2010-01-01 〜 2025-12-31');
   
   const outputDir = path.join(__dirname, '..', 'data', 'topix_sectors');
   if (!fs.existsSync(outputDir)) {

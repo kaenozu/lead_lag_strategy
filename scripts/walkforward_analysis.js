@@ -329,7 +329,7 @@ async function main() {
   let totalTestReturn = 0;
   let totalTestSharpe = 0;
   let totalTestWinRate = 0;
-  let paramStability = { lambdaReg: {}, nFactors: {}, quantile: {} };
+  const paramStability = { lambdaReg: {}, nFactors: {}, quantile: {} };
 
   periods.forEach(p => {
     const diff = p.trainMetrics.sharpeRatio - p.testMetrics.sharpeRatio;

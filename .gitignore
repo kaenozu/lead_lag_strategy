@@ -15,6 +15,7 @@ server.log
 # 結果ファイル（必要に応じて）
 results/*.csv
 results/*.json
+results/*.txt
 !results/.gitkeep
 
 # データファイル（必要に応じて）

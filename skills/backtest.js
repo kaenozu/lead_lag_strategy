@@ -60,7 +60,7 @@ module.exports = createSkill({
       };
       
       console.log('✅ パラメータ最適化完了');
-      console.log(`   最適パラメータ:`, optResult.optimalParameters);
+      console.log('   最適パラメータ:', optResult.optimalParameters);
     } catch (error) {
       console.warn('⚠️ パラメータ最適化をスキップ:', error.message);
     }

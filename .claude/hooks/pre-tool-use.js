@@ -100,10 +100,10 @@ function preToolUse(context) {
       'sudo rm',
       'mkfs',
       'dd if=/dev/zero',
-      ':\\(\\)\\{:\\|:&\\};:',',
+      ':\\(\\)\\{:\\|:&\\};:',
       'chmod -R 777 /',
       'wget.*\\|.*sh',
-      'curl.*\\|.*sh',
+      'curl.*\\|.*sh'
     ];
     
     for (const pattern of dangerousCommands) {

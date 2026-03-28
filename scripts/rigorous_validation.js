@@ -34,7 +34,7 @@ function runStrategy(returnsUs, returnsJp, returnsJpOc, params, CFull, startIdx,
     const retUsLatest = returnsUs[i - 1].values;
 
     const signal = signalGen.computeSignal(retUsWindow, retJpWindow, retUsLatest, SECTOR_LABELS, CFull);
-    let weights = buildPortfolio(signal, params.quantile);
+    const weights = buildPortfolio(signal, params.quantile);
 
     let ret = weightedReturn(weights, returnsJpOc[i].values);
     ret = applyTransactionCosts(ret, { slippage: 0, commission: 0 }, prevWeights, weights);

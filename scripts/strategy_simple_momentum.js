@@ -255,14 +255,14 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 戦略設定:`);
+  console.log('\n📋 戦略設定:');
   console.log(`  モメンタム期間：${STRATEGY_CONFIG.momentumWindow}日`);
   console.log(`  取引銘柄：上位・下位各${(STRATEGY_CONFIG.quantile * 100).toFixed(0)}%`);
   console.log(`  リバランス：${STRATEGY_CONFIG.rebalanceDays}日ごと`);
 
   // データ取得
   const winDays = 300;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
