@@ -147,6 +147,22 @@ describe('lib/math - Enhanced', () => {
       expect(eigenvalues[0]).toBeCloseTo(3);
       expect(eigenvalues[1]).toBeCloseTo(2);
     });
+
+    test('非収束時は Jacobi にフォールバックして安定解を返す', () => {
+      const A = [
+        [3, 0, 0],
+        [0, 1, 0],
+        [0, 0, 2]
+      ];
+
+      // 収束する前提を意図的に壊す（maxIter を極端に小さくする）
+      const { eigenvalues, converged } = math.eigenSymmetricTopK(A, 2, 1e-12, 1);
+
+      // フォールバックした場合は converged=false（ただし返す固有値は妥当であるべき）
+      expect(converged).toBe(false);
+      expect(eigenvalues[0]).toBeCloseTo(3, 6);
+      expect(eigenvalues[1]).toBeCloseTo(2, 6);
+    });
   });
 
   describe('normalize - Enhanced', () => {
