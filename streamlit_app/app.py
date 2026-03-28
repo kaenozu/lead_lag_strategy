@@ -14,15 +14,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from _paths import repo_root, results_dir
-
 # Python 版シグナル生成をインポート（Streamlit Cloud 用）
+# _paths よりも先にインポート（generate_signal は _paths に依存しない）
 try:
     from generate_signal import generate_signal
     PYTHON_SIGNAL_AVAILABLE = True
+    IMPORT_ERROR_MESSAGE = ''
 except ImportError as e:
     PYTHON_SIGNAL_AVAILABLE = False
     IMPORT_ERROR_MESSAGE = str(e)
+
+from _paths import repo_root, results_dir
 
 st.set_page_config(
     page_title="日米リードラグ戦略",
