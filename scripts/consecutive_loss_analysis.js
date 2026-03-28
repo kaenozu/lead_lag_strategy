@@ -151,7 +151,7 @@ function consecutiveLossAnalysis() {
 
   // 最佳ルール
   const bestRule = ruleTests[0];
-  console.log(`\n【最佳ルール】`);
+  console.log('\n【最佳ルール】');
   console.log(`閾値：${bestRule.threshold}日、削減率：${bestRule.reduction*100}%`);
   console.log(`AR: ${bestRule.AR.toFixed(2)}%, R/R: ${bestRule.RR.toFixed(2)}, 累積：${bestRule.Cumulative.toFixed(2)}%`);
 

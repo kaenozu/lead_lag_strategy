@@ -46,9 +46,9 @@ const BACKTEST_CONFIG = {
     lookback: 60,            // 60日MA（実データ198日以上で動作）
     bullThreshold: 1.02,     // MA比+2%超で強気判定
     bearThreshold: 0.98,     // MA比-2%未満で弱気判定
-    positionSizeBull: 1.0,
+    positionSizeBull: 1.0,   // 強気時はフルポジション（P3直近OOSが好調なため維持）
     positionSizeBear: 0.0,   // 弱気時は取引停止（損失抑制）
-    positionSizeNeutral: 0.5
+    positionSizeNeutral: 0.75 // 中立時は75%（0.5→0.75: 短中期ドラッグを軽減）
   },
   
   // リスク管理
@@ -57,7 +57,13 @@ const BACKTEST_CONFIG = {
   sectorFilterEnabled: true,
   sectorLookback: 60,
   sectorMinWinRate: 0.3,
-  sectorMinReturn: -0.001
+  sectorMinReturn: -0.001,
+  // bull 期間の quantile: 1.0 = 変更なし（P3直近好調のため過度な分散は行わない）
+  bullQuantileMultiplier: 1.0,
+  // シグナル品質フィルター（bull期間のダイナミックなポジション減少）
+  useSignalQualityFilter: true,
+  signalQualityWindow: 20,    // 直近N日のシグナル正解率を追跡
+  signalQualityThreshold: 0.48 // これ以下ならbullでポジション縮小
 };
 
 /**
@@ -167,6 +173,12 @@ function runBacktestWithMarketRegime(
   const stopCooldownDays = Math.max(0, params.stopCooldownDays ?? BACKTEST_CONFIG.stopCooldownDays ?? 1);
   let stopCooldownRemaining = 0;
 
+  // シグナル品質追跡（bull期間の動的ポジション調整用）
+  const signalQualityWindow = params.signalQualityWindow ?? BACKTEST_CONFIG.signalQualityWindow;
+  const signalQualityThreshold = params.signalQualityThreshold ?? BACKTEST_CONFIG.signalQualityThreshold;
+  const minSignalHistoryForFilter = Math.max(1, Math.floor(signalQualityWindow / 2));
+  const signalAccHistory = []; // 0 or 1: シグナルの方向正解履歴
+
   const signalGen = new LeadLagSignal({
     lambdaReg: params.lambdaReg,
     nFactors: params.nFactors,
@@ -204,7 +216,15 @@ function runBacktestWithMarketRegime(
     // 市場環境判定
     const priceSlice = usPrices.slice(0, i + 1);
     const marketRegime = determineMarketRegime(priceSlice, params.marketRegime);
-    const positionSize = marketRegime.positionSize;
+    let positionSize = marketRegime.positionSize;
+
+    // bull期間のシグナル品質フィルター（lookaheadなし：追跡履歴は前日までの実績）
+    if (params.useSignalQualityFilter && marketRegime.regime === MarketRegime.BULL && signalAccHistory.length >= minSignalHistoryForFilter) {
+      const currentQuality = signalAccHistory.reduce((a, b) => a + b, 0) / signalAccHistory.length;
+      if (currentQuality < signalQualityThreshold) {
+        positionSize = positionSize * Math.max(0, currentQuality / signalQualityThreshold);
+      }
+    }
 
     // ウィンドウデータ
     const windowStart = i - windowLength;
@@ -221,10 +241,15 @@ function runBacktestWithMarketRegime(
       CFull
     );
 
-    // ポートフォリオ構築（ポジションサイズ調整）
+    // ポートフォリオ構築（ポジションサイズ調整 + regime別 quantile）
+    // bull期間はシグナルが希薄なため quantile を広げてリスク分散
+    const bullQMultiplier = params.bullQuantileMultiplier ?? 1.0;
+    const effectiveQuantile = (marketRegime.regime === MarketRegime.BULL && bullQMultiplier !== 1.0)
+      ? Math.min(0.5, params.quantile * bullQMultiplier)
+      : params.quantile;
     let weights = buildPortfolio(
       signal,
-      params.quantile,
+      effectiveQuantile,
       excludedIndices,
       positionSize,
       params.shortRatio ?? 1.0
@@ -278,6 +303,20 @@ function runBacktestWithMarketRegime(
       regimeMessage: marketRegime.message
     });
 
+    // シグナル正解率記録（次ステップの品質判定に使用）
+    if (weights.some(w => w > 0) && weights.some(w => w < 0)) {
+      let longRet = 0, longCnt = 0, shortRet = 0, shortCnt = 0;
+      for (let j = 0; j < weights.length; j++) {
+        if (weights[j] > 0) { longRet += retOc[j]; longCnt++; }
+        else if (weights[j] < 0) { shortRet += retOc[j]; shortCnt++; }
+      }
+      const correct = (longCnt > 0 && shortCnt > 0)
+        ? ((longRet / longCnt) > (shortRet / shortCnt) ? 1 : 0)
+        : 0;
+      signalAccHistory.push(correct);
+      if (signalAccHistory.length > signalQualityWindow) signalAccHistory.shift();
+    }
+
     // 市場環境別統計
     regimeStats[marketRegime.regime].days++;
     regimeStats[marketRegime.regime].return += netReturn;
@@ -312,7 +351,7 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 市場環境フィルタ設定:`);
+  console.log('\n📋 市場環境フィルタ設定:');
   console.log(`  強気閾値：${(BACKTEST_CONFIG.marketRegime.bullThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  弱気閾値：${(BACKTEST_CONFIG.marketRegime.bearThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  強気時ポジション：${(BACKTEST_CONFIG.marketRegime.positionSizeBull * 100).toFixed(0)}%`);
@@ -321,7 +360,7 @@ async function main() {
 
   // データ取得
   const winDays = 500;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),

@@ -38,7 +38,7 @@ async function main() {
   
   // データ取得
   const winDays = config.backtest.windowLength + 80;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
   
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),

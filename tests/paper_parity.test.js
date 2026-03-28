@@ -57,7 +57,8 @@ function runNodeParity() {
   const pcaCfg = {
     lambdaReg: FIXTURE.lambdaReg,
     nFactors: FIXTURE.nFactors,
-    orderedSectorKeys: FIXTURE.orderedSectorKeys
+    orderedSectorKeys: FIXTURE.orderedSectorKeys,
+    windowLength: R.length
   };
 
   const nSamples = R.length;
