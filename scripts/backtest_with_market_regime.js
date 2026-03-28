@@ -48,7 +48,7 @@ const BACKTEST_CONFIG = {
     bearThreshold: 0.98,     // MA比-2%未満で弱気判定
     positionSizeBull: 1.0,
     positionSizeBear: 0.0,   // 弱気時は取引停止（損失抑制）
-    positionSizeNeutral: 0.5
+    positionSizeNeutral: 0.75 // 中立時は75%（0.5→0.75: 短中期ドラッグを軽減）
   },
   
   // リスク管理
