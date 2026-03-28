@@ -68,11 +68,19 @@ function toOCMap(byTicker) {
 function generateCombinations(grid) {
   const keys = Object.keys(grid);
   const result = [];
-  function recurse(idx, current) {
-    if (idx === keys.length) { result.push({ ...current }); return; }
-    for (const val of grid[keys[idx]]) { current[keys[idx]] = val; recurse(idx + 1, current); }
+  for (const key of keys) {
+    const currentLength = result.length || 1;
+    const values = grid[key];
+    const newResult = [];
+    for (let i = 0; i < currentLength; i++) {
+      const base = result[i] || {};
+      for (const val of values) {
+        newResult.push({ ...base, [key]: val });
+      }
+    }
+    result.length = 0;
+    result.push(...newResult);
   }
-  recurse(0, {});
   return result;
 }
 
@@ -140,8 +148,9 @@ async function main() {
   const results = [];
   let count = 0;
 
-  const origWarn = console.warn;
-  console.warn = () => {};
+  const logger = {
+    warn: (msg, data) => console.warn(`⚠️  ${msg}`, data || '')
+  };
 
   for (const params of combinations) {
     count++;
@@ -179,7 +188,8 @@ async function main() {
         ret = applyTransactionCosts(ret, COSTS, prevWeights, weights);
         returns.push(ret);
         prevWeights = weights;
-      } catch {
+      } catch (error) {
+        logger.warn(`パラメータ組み合わせでエラー：${JSON.stringify(params)}`, { error: error.message });
         returns.push(0);
         prevWeights = null;
       }
@@ -202,7 +212,6 @@ async function main() {
     }
   }
 
-  console.warn = origWarn;
   const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
   console.log(`  Done: ${results.length} valid / ${total} total in ${elapsed}s`);
 

@@ -35,12 +35,31 @@ const SLIPPAGE_RATE = 0.001;
  * グリッドサーチパラメータ
  */
 const GRID = {
-  lambdaReg: [0.1, 0.3, 0.5, 0.7, 0.9],
-  nFactors: [1, 2, 3, 4, 5],
-  quantile: [0.2, 0.3, 0.4, 0.5, 0.6],
-  shortRatio: [0.0, 0.5, 1.0], // 0=ロングのみ、0.5=ショート半分、1=通常
-  dailyLossStop: [0.0, 0.01, 0.02, 0.03] // 0=なし、1-3%
+  lambdaReg: [0.3, 0.5, 0.7, 0.9],
+  nFactors: [1, 2, 3],
+  quantile: [0.2, 0.3, 0.4, 0.5],
+  shortRatio: [0.0, 0.5],
+  dailyLossStop: [0.0, 0.01, 0.02],
+  useEwma: [false, true],           // EWMA相関行列使用
+  ewmaHalflife: [20, 30]            // EWMA半減期（useEwma=trueのみ有効）
 };
+
+const OBJECTIVE_WEIGHTS = {
+  sharpe: 1.0,
+  totalReturn: 8.0,
+  mddPenalty: 6.0
+};
+
+// Top N results to display
+const TOP_N_RESULTS = 10;
+
+function calculateCompositeScore(result) {
+  return (
+    OBJECTIVE_WEIGHTS.sharpe * (result.sharpeRatio || 0) +
+    OBJECTIVE_WEIGHTS.totalReturn * (result.totalReturn || 0) -
+    OBJECTIVE_WEIGHTS.mddPenalty * Math.abs(result.maxDrawdown || 0)
+  );
+}
 
 /**
  * バックテスト実行（単一パラメータセット）
@@ -61,6 +80,8 @@ function runBacktestWithParams(
   const signalGen = new LeadLagSignal({
     lambdaReg: params.lambdaReg,
     nFactors: params.nFactors,
+    useEwma: params.useEwma || false,
+    ewmaHalflife: params.ewmaHalflife || 30,
     orderedSectorKeys: config.pca.orderedSectorKeys
   });
 
@@ -129,7 +150,8 @@ function runBacktestWithParams(
     totalReturn: metrics.Cumulative - 1 || 0,
     sharpeRatio: metrics.RR || 0,
     maxDrawdown: metrics.MDD || 0,
-    winRate: strategyReturns.filter(r => r.return > 0).length / strategyReturns.length || 0
+    winRate: strategyReturns.filter(r => r.return > 0).length / strategyReturns.length || 0,
+    objectiveScore: 0
   };
 }
 
@@ -175,9 +197,9 @@ async function main() {
 
   console.log(`\n📅 最適化期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
 
-  // データ取得
-  const winDays = config.backtest.windowLength + 80;
-  console.log(`\n📡 市場データ取得中...`);
+  // データ取得（十分なサンプルを確保するため500日分取得）
+  const winDays = 500;
+  console.log(`\n📡 市場データ取得中（${winDays}日分）...`);
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
@@ -203,46 +225,59 @@ async function main() {
 
   // グリッドサーチ
   console.log('\n🔍 グリッドサーチ開始...');
-  console.log(`パラメータ組み合わせ数：${GRID.lambdaReg.length * GRID.nFactors.length * GRID.quantile.length * GRID.shortRatio.length * GRID.dailyLossStop.length}`);
+  // useEwma=false時はewmaHalflifeは1種のみ有効なので組み合わせ数を正確に計算
+  const totalIterations = GRID.lambdaReg.length * GRID.nFactors.length * GRID.quantile.length *
+    GRID.shortRatio.length * GRID.dailyLossStop.length *
+    (GRID.useEwma.filter(v => !v).length + GRID.useEwma.filter(v => v).length * GRID.ewmaHalflife.length);
+  console.log(`パラメータ組み合わせ数：${totalIterations}`);
 
   const results = [];
   let iteration = 0;
-  const totalIterations = GRID.lambdaReg.length * GRID.nFactors.length * GRID.quantile.length * GRID.shortRatio.length * GRID.dailyLossStop.length;
 
   for (const lambdaReg of GRID.lambdaReg) {
     for (const nFactors of GRID.nFactors) {
       for (const quantile of GRID.quantile) {
         for (const shortRatio of GRID.shortRatio) {
           for (const dailyLossStop of GRID.dailyLossStop) {
-            iteration++;
+            for (const useEwma of GRID.useEwma) {
+              const halflifeValues = useEwma ? GRID.ewmaHalflife : [30];
+              for (const ewmaHalflife of halflifeValues) {
+                iteration++;
 
-            const params = {
-              lambdaReg,
-              nFactors,
-              quantile,
-              shortRatio,
-              dailyLossStop
-            };
+                const params = {
+                  lambdaReg,
+                  nFactors,
+                  quantile,
+                  shortRatio,
+                  dailyLossStop,
+                  useEwma,
+                  ewmaHalflife
+                };
 
-            try {
-              const result = runBacktestWithParams(
-                retUs,
-                retJp,
-                retJpOc,
-                params,
-                config.sectorLabels,
-                CFull
-              );
+                try {
+                  const result = runBacktestWithParams(
+                    retUs,
+                    retJp,
+                    retJpOc,
+                    params,
+                    config.sectorLabels,
+                    CFull
+                  );
 
-              results.push(result);
+                  result.objectiveScore = calculateCompositeScore(result);
 
-              // 進捗表示（10% ごと）
-              if (iteration % Math.ceil(totalIterations / 10) === 0) {
-                const progress = (iteration / totalIterations * 100).toFixed(0);
-                console.log(`  進捗：${progress}% (${iteration}/${totalIterations})`);
+                  results.push(result);
+
+                  // 進捗表示（10% ごと）
+                  if (iteration % Math.ceil(totalIterations / 10) === 0) {
+                    const progress = (iteration / totalIterations * 100).toFixed(0);
+                    console.log(`  進捗：${progress}% (${iteration}/${totalIterations})`);
+                  }
+                } catch (error) {
+                  logger.warn(`バックテスト失敗：${JSON.stringify(params)}`, { error: error.message });
+                  console.warn(`  ⚠️  パラメータ組み合わせでエラー：${JSON.stringify(params)} - ${error.message}`);
+                }
               }
-            } catch (error) {
-              logger.warn(`バックテスト失敗：${JSON.stringify(params)}`, { error: error.message });
             }
           }
         }
@@ -250,14 +285,14 @@ async function main() {
     }
   }
 
-  // 結果ソート（シャープレシオ基準）
-  results.sort((a, b) => b.sharpeRatio - a.sharpeRatio);
+  // 結果ソート（複合目的関数基準）
+  results.sort((a, b) => b.objectiveScore - a.objectiveScore);
 
   console.log('\n' + '='.repeat(80));
-  console.log('📊 最適パラメータ TOP10（シャープレシオ順）');
+  console.log(`📊 最適パラメータ TOP${TOP_N_RESULTS}（複合スコア順）`);
   console.log('='.repeat(80));
 
-  console.log('\nRank  λ      nFact  Quant  Short  Stop   利回り (%)  SR     勝率 (%)  最大 DD (%)');
+  console.log('\nRank  λ      nFact  Quant  Short  Stop   利回り (%)  SR     勝率 (%)  最大 DD (%)  Score');
   console.log('-'.repeat(80));
 
   if (results.length === 0) {
@@ -265,20 +300,22 @@ async function main() {
     return;
   }
 
-  results.slice(0, 10).forEach((r, i) => {
-    const cumulativeReturn = r.metrics?.cumulativeReturn || 0;
+  results.slice(0, TOP_N_RESULTS).forEach((r, i) => {
+    const totalReturn = r.totalReturn || 0;
     const sharpeRatio = r.sharpeRatio || 0;
     const winRate = r.winRate || 0;
     const maxDrawdown = r.maxDrawdown || 0;
+    const objectiveScore = r.objectiveScore || 0;
     
     console.log(
       `${String(i + 1).padStart(4)}  ${r.params.lambdaReg.toFixed(1).padStart(4)}  ` +
       `${String(r.params.nFactors).padStart(5)}  ${r.params.quantile.toFixed(1).padStart(5)}  ` +
       `${r.params.shortRatio.toFixed(1).padStart(5)}  ${r.params.dailyLossStop.toFixed(2).padStart(4)}  ` +
-      `${(cumulativeReturn * 100).toFixed(1).padStart(8)}  ` +
+      `${(totalReturn * 100).toFixed(1).padStart(8)}  ` +
       `${sharpeRatio.toFixed(2).padStart(6)}  ` +
       `${(winRate * 100).toFixed(1).padStart(8)}  ` +
-      `${(maxDrawdown * 100).toFixed(1).padStart(9)}`
+      `${(maxDrawdown * 100).toFixed(1).padStart(9)}  ` +
+      `${objectiveScore.toFixed(3).padStart(6)}`
     );
   });
 
@@ -294,66 +331,71 @@ async function main() {
   console.log(`  quantile:      ${best.params.quantile.toFixed(1)}`);
   console.log(`  shortRatio:    ${best.params.shortRatio.toFixed(1)}`);
   console.log(`  dailyLossStop: ${(best.params.dailyLossStop * 100).toFixed(1)}%`);
+  console.log(`  useEwma:       ${best.params.useEwma}`);
+  if (best.params.useEwma) {
+    console.log(`  ewmaHalflife:  ${best.params.ewmaHalflife}日`);
+  }
 
   console.log(`\nパフォーマンス:`);
   console.log(`  総利回り：      ${(best.totalReturn * 100).toFixed(2)}%`);
   console.log(`  シャープレシオ： ${best.sharpeRatio.toFixed(2)}`);
   console.log(`  勝率：          ${(best.winRate * 100).toFixed(1)}%`);
   console.log(`  最大ドローダウン： ${(best.maxDrawdown * 100).toFixed(2)}%`);
-  console.log(`  年率リターン：   ${(best.metrics.annualizedReturn * 100).toFixed(2)}%`);
-  console.log(`  年率ボラティリティ： ${(best.metrics.annualizedVolatility * 100).toFixed(2)}%`);
+  console.log(`  年率リターン：   ${(best.metrics.AR * 100).toFixed(2)}%`);
+  console.log(`  年率ボラティリティ： ${(best.metrics.RISK * 100).toFixed(2)}%`);
+  console.log(`  複合スコア：     ${best.objectiveScore.toFixed(3)}`);
 
   // パラメータ感度分析
   console.log('\n' + '='.repeat(80));
   console.log('📊 パラメータ感度分析');
   console.log('='.repeat(80));
 
-  // lambdaReg 別平均シャープレシオ
+  // lambdaReg 別平均複合スコア
   const lambdaRegStats = {};
   GRID.lambdaReg.forEach(lambda => {
     const filtered = results.filter(r => r.params.lambdaReg === lambda);
-    const avgSharpe = filtered.reduce((sum, r) => sum + r.sharpeRatio, 0) / filtered.length;
-    lambdaRegStats[lambda.toFixed(1)] = avgSharpe;
+    const avgScore = filtered.reduce((sum, r) => sum + r.objectiveScore, 0) / filtered.length;
+    lambdaRegStats[lambda.toFixed(1)] = avgScore;
   });
 
-  console.log('\nlambdaReg（正則化強度）別平均シャープレシオ:');
+  console.log('\nlambdaReg（正則化強度）別平均複合スコア:');
   Object.entries(lambdaRegStats)
     .sort((a, b) => b[1] - a[1])
-    .forEach(([lambda, sharpe]) => {
-      const bar = '█'.repeat(Math.max(1, Math.floor((sharpe + 60) / 5)));
-      console.log(`  ${lambda}: ${sharpe.toFixed(2)} ${bar}`);
+    .forEach(([lambda, score]) => {
+      const bar = '█'.repeat(Math.max(1, Math.floor((score + 10) * 3)));
+      console.log(`  ${lambda}: ${score.toFixed(3)} ${bar}`);
     });
 
-  // shortRatio 別平均シャープレシオ
+  // shortRatio 別平均複合スコア
   const shortRatioStats = {};
   GRID.shortRatio.forEach(ratio => {
     const filtered = results.filter(r => r.params.shortRatio === ratio);
-    const avgSharpe = filtered.reduce((sum, r) => sum + r.sharpeRatio, 0) / filtered.length;
-    shortRatioStats[ratio.toFixed(1)] = avgSharpe;
+    const avgScore = filtered.reduce((sum, r) => sum + r.objectiveScore, 0) / filtered.length;
+    shortRatioStats[ratio.toFixed(1)] = avgScore;
   });
 
-  console.log('\nshortRatio（ショート比率）別平均シャープレシオ:');
+  console.log('\nshortRatio（ショート比率）別平均複合スコア:');
   Object.entries(shortRatioStats)
     .sort((a, b) => b[1] - a[1])
-    .forEach(([ratio, sharpe]) => {
-      const bar = '█'.repeat(Math.max(1, Math.floor((sharpe + 60) / 5)));
-      console.log(`  ${ratio}: ${sharpe.toFixed(2)} ${bar}`);
+    .forEach(([ratio, score]) => {
+      const bar = '█'.repeat(Math.max(1, Math.floor((score + 10) * 3)));
+      console.log(`  ${ratio}: ${score.toFixed(3)} ${bar}`);
     });
 
-  // dailyLossStop 別平均シャープレシオ
+  // dailyLossStop 別平均複合スコア
   const dailyLossStopStats = {};
   GRID.dailyLossStop.forEach(stop => {
     const filtered = results.filter(r => r.params.dailyLossStop === stop);
-    const avgSharpe = filtered.reduce((sum, r) => sum + r.sharpeRatio, 0) / filtered.length;
-    dailyLossStopStats[(stop * 100).toFixed(0) + '%'] = avgSharpe;
+    const avgScore = filtered.reduce((sum, r) => sum + r.objectiveScore, 0) / filtered.length;
+    dailyLossStopStats[(stop * 100).toFixed(0) + '%'] = avgScore;
   });
 
-  console.log('\ndailyLossStop（日次損失ストップ）別平均シャープレシオ:');
+  console.log('\ndailyLossStop（日次損失ストップ）別平均複合スコア:');
   Object.entries(dailyLossStopStats)
     .sort((a, b) => b[1] - a[1])
-    .forEach(([stop, sharpe]) => {
-      const bar = '█'.repeat(Math.max(1, Math.floor((sharpe + 60) / 5)));
-      console.log(`  ${stop}: ${sharpe.toFixed(2)} ${bar}`);
+    .forEach(([stop, score]) => {
+      const bar = '█'.repeat(Math.max(1, Math.floor((score + 10) * 3)));
+      console.log(`  ${stop}: ${score.toFixed(3)} ${bar}`);
     });
 
   // JSON 出力
@@ -374,16 +416,19 @@ async function main() {
       quantile: GRID.quantile.length,
       shortRatio: GRID.shortRatio.length,
       dailyLossStop: GRID.dailyLossStop.length,
+      useEwma: GRID.useEwma.length,
+      ewmaHalflife: GRID.ewmaHalflife.length,
       total: totalIterations
     },
     optimalParameters: best.params,
     optimalMetrics: {
+      objectiveScore: best.objectiveScore,
       totalReturn: best.totalReturn,
       sharpeRatio: best.sharpeRatio,
       winRate: best.winRate,
       maxDrawdown: best.maxDrawdown,
-      annualizedReturn: best.metrics.annualizedReturn,
-      annualizedVolatility: best.metrics.annualizedVolatility
+      annualizedReturn: best.metrics.AR,
+      annualizedVolatility: best.metrics.RISK
     },
     top10Results: results.slice(0, 10),
     sensitivityAnalysis: {
@@ -410,7 +455,9 @@ async function main() {
   console.log(`  nFactors: ${best.params.nFactors},`);
   console.log(`  quantile: ${best.params.quantile.toFixed(1)},`);
   console.log(`  shortRatio: ${best.params.shortRatio.toFixed(1)},`);
-  console.log(`  dailyLossStop: ${best.params.dailyLossStop.toFixed(2)}`);
+  console.log(`  dailyLossStop: ${best.params.dailyLossStop.toFixed(2)},`);
+  console.log(`  useEwma: ${best.params.useEwma},`);
+  console.log(`  ewmaHalflife: ${best.params.ewmaHalflife}`);
   console.log(`}`);
   console.log(`\`\`\``);
 

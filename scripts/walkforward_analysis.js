@@ -20,6 +20,7 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const { computePerformanceMetrics } = require('../lib/portfolio');
+const { BACKTEST_CONFIG } = require('./backtest_with_market_regime');
 
 const logger = createLogger('WalkforwardAnalysis');
 
@@ -31,16 +32,40 @@ const SLIPPAGE_RATE = 0.001;
  * ウォークフォワード設定
  */
 const WF_CONFIG = {
-  trainDays: 80,         // 訓練期間（4 ヶ月）
-  testDays: 30,          // テスト期間（1.5 ヶ月）
-  stepDays: 30,          // ステップ幅（1.5 ヶ月）
-  totalPeriods: 3,       // 期間数
+  trainDays: 120,        // 訓練期間（約 6 ヶ月）
+  testDays: 20,          // テスト期間（約 1 ヶ月）
+  stepDays: 20,          // ステップ幅（約 1 ヶ月）
+  totalPeriods: 6,       // 期間数
+
+  // 実運用中の現行パラメータで再実行する
+  useCurrentParams: true,
+  currentParams: {
+    lambdaReg: BACKTEST_CONFIG.lambdaReg,
+    nFactors: BACKTEST_CONFIG.nFactors,
+    quantile: BACKTEST_CONFIG.quantile
+  },
+
+  // 最適化時の複合目的関数（Sharpe + Return - Drawdown 罰則）
+  objectiveWeights: {
+    sharpe: 1.0,
+    totalReturn: 8.0,
+    mddPenalty: 6.0
+  },
   
   // パラメータグリッド（簡易版）
   lambdaReg: [0.5, 0.7, 0.9],
   nFactors: [1, 2, 3],
   quantile: [0.4, 0.5, 0.6]
 };
+
+function calculateCompositeScore(result) {
+  const w = WF_CONFIG.objectiveWeights;
+  return (
+    w.sharpe * (result.sharpeRatio || 0) +
+    w.totalReturn * (result.totalReturn || 0) -
+    w.mddPenalty * Math.abs(result.maxDrawdown || 0)
+  );
+}
 
 /**
  * バックテスト実行（単一パラメータ）
@@ -145,16 +170,17 @@ function runBacktest(returnsUs, returnsJpOc, params, sectorLabels, CFull, startD
  */
 function gridSearch(returnsUs, returnsJpOc, sectorLabels, CFull, startDate, endDate) {
   let bestResult = null;
-  let bestSharpe = -Infinity;
+  let bestScore = -Infinity;
 
   for (const lambdaReg of WF_CONFIG.lambdaReg) {
     for (const nFactors of WF_CONFIG.nFactors) {
       for (const quantile of WF_CONFIG.quantile) {
         const params = { lambdaReg, nFactors, quantile };
         const result = runBacktest(returnsUs, returnsJpOc, params, sectorLabels, CFull, startDate, endDate);
+        result.objectiveScore = calculateCompositeScore(result);
 
-        if (result.sharpeRatio > bestSharpe) {
-          bestSharpe = result.sharpeRatio;
+        if (result.objectiveScore > bestScore) {
+          bestScore = result.objectiveScore;
           bestResult = result;
         }
       }
@@ -228,17 +254,33 @@ async function main() {
     console.log(`訓練：${period.trainStart} 〜 ${period.trainEnd}`);
     console.log(`テスト：${period.testStart} 〜 ${period.testEnd}`);
 
-    // 訓練期間でパラメータ最適化
-    console.log('訓練期間でパラメータ最適化中...');
-    const trainResult = gridSearch(retUs, retJpOc, config.sectorLabels, CFull, trainStart, trainEnd);
+    // 訓練期間でパラメータ最適化（または現行パラメータ固定）
+    let trainResult;
+    if (WF_CONFIG.useCurrentParams) {
+      console.log('現行パラメータで訓練期間を評価中...');
+      trainResult = runBacktest(
+        retUs,
+        retJpOc,
+        WF_CONFIG.currentParams,
+        config.sectorLabels,
+        CFull,
+        trainStart,
+        trainEnd
+      );
+      trainResult.objectiveScore = calculateCompositeScore(trainResult);
+    } else {
+      console.log('訓練期間でパラメータ最適化中（複合目的関数）...');
+      trainResult = gridSearch(retUs, retJpOc, config.sectorLabels, CFull, trainStart, trainEnd);
+    }
 
     if (!trainResult) {
       console.log('最適化失敗、スキップ');
       continue;
     }
 
-    console.log(`最適パラメータ：lambdaReg=${trainResult.params.lambdaReg}, nFactors=${trainResult.params.nFactors}, quantile=${trainResult.params.quantile}`);
+    console.log(`採用パラメータ：lambdaReg=${trainResult.params.lambdaReg}, nFactors=${trainResult.params.nFactors}, quantile=${trainResult.params.quantile}`);
     console.log(`訓練期間シャープレシオ：${trainResult.sharpeRatio.toFixed(2)}`);
+    console.log(`訓練期間複合スコア：${trainResult.objectiveScore.toFixed(3)}`);
 
     // テスト期間で検証（最適パラメータ固定）
     console.log('テスト期間で検証中...');
@@ -260,7 +302,8 @@ async function main() {
     period.trainMetrics = {
       sharpeRatio: trainResult.sharpeRatio,
       totalReturn: trainResult.totalReturn,
-      winRate: trainResult.winRate
+      winRate: trainResult.winRate,
+      objectiveScore: trainResult.objectiveScore
     };
     period.testMetrics = {
       sharpeRatio: testResult.sharpeRatio,
@@ -373,18 +416,30 @@ async function main() {
   console.log('='.repeat(80));
 
   const avgDiff = periods.reduce((sum, p) => sum + (p.trainMetrics.sharpeRatio - p.testMetrics.sharpeRatio), 0) / periods.length;
+  const avgReturnDiff = periods.reduce((sum, p) => sum + (p.trainMetrics.totalReturn - p.testMetrics.totalReturn), 0) / periods.length;
+  const chosenParamKeys = periods.map(p => `${p.optimalParams.lambdaReg}-${p.optimalParams.nFactors}-${p.optimalParams.quantile}`);
+  const uniqueParamCount = new Set(chosenParamKeys).size;
+  const paramSwitchRatio = periods.length > 1 ? (uniqueParamCount - 1) / (periods.length - 1) : 0;
+  const risk = (avgDiff > 1.5 || avgReturnDiff > 0.02)
+    ? 'high'
+    : (avgDiff > 0.8 || avgReturnDiff > 0.01 || paramSwitchRatio > 0.6)
+      ? 'medium'
+      : 'low';
   
-  if (avgDiff > 2.0) {
+  if (risk === 'high') {
     console.log('⚠️ 過学習のリスク：高');
-    console.log(`   訓練 - テストの差分平均：${avgDiff.toFixed(2)}`);
-    console.log('   パラメータの単純化を検討してください');
-  } else if (avgDiff > 1.0) {
+    console.log(`   Sharpe 差分平均：${avgDiff.toFixed(2)}`);
+    console.log(`   Return 差分平均：${(avgReturnDiff * 100).toFixed(2)}%`);
+    console.log('   目的関数と制約の再調整を推奨します');
+  } else if (risk === 'medium') {
     console.log('⚠️ 過学習のリスク：中');
-    console.log(`   訓練 - テストの差分平均：${avgDiff.toFixed(2)}`);
-    console.log('   ウォークフォワード結果を重視してください');
+    console.log(`   Sharpe 差分平均：${avgDiff.toFixed(2)}`);
+    console.log(`   Return 差分平均：${(avgReturnDiff * 100).toFixed(2)}%`);
+    console.log('   追加のロール期間評価を推奨します');
   } else {
     console.log('✅ 過学習のリスク：低');
-    console.log(`   訓練 - テストの差分平均：${avgDiff.toFixed(2)}`);
+    console.log(`   Sharpe 差分平均：${avgDiff.toFixed(2)}`);
+    console.log(`   Return 差分平均：${(avgReturnDiff * 100).toFixed(2)}%`);
     console.log('   パラメータは安定しています');
   }
 
@@ -422,7 +477,9 @@ async function main() {
     recommendedParams,
     overfittingCheck: {
       avgDiff,
-      risk: avgDiff > 2.0 ? 'high' : avgDiff > 1.0 ? 'medium' : 'low'
+      avgReturnDiff,
+      paramSwitchRatio,
+      risk
     }
   };
 
