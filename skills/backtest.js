@@ -8,7 +8,6 @@ const { createSkill } = require('./skill-base');
 const { runBacktestWithOptimization } = require('../backtest/improved');
 const { runWalkForwardAnalysis } = require('../backtest/walkforward_open_to_close');
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
-const { config } = require('../lib/config');
 
 module.exports = createSkill({
   name: 'backtest',
@@ -60,7 +59,7 @@ module.exports = createSkill({
       };
       
       console.log('✅ パラメータ最適化完了');
-      console.log(`   最適パラメータ:`, optResult.optimalParameters);
+      console.log('   最適パラメータ:', optResult.optimalParameters);
     } catch (error) {
       console.warn('⚠️ パラメータ最適化をスキップ:', error.message);
     }

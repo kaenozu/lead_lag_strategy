@@ -20,9 +20,7 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const {
-  buildPortfolio,
-  computePerformanceMetrics,
-  applyTransactionCosts
+  computePerformanceMetrics
 } = require('../lib/portfolio');
 
 const logger = createLogger('ParameterOptimizer');
@@ -72,7 +70,6 @@ function runBacktestWithParams(
   sectorLabels,
   CFull
 ) {
-  const nJp = returnsJpOc[0].values.length;
   const strategyReturns = [];
   const dates = [];
   let prevWeights = null;
@@ -325,7 +322,7 @@ async function main() {
   console.log('🏆 最適パラメータ詳細');
   console.log('='.repeat(80));
 
-  console.log(`\nパラメータ:`);
+  console.log('\nパラメータ:');
   console.log(`  lambdaReg:     ${best.params.lambdaReg.toFixed(1)}`);
   console.log(`  nFactors:      ${best.params.nFactors}`);
   console.log(`  quantile:      ${best.params.quantile.toFixed(1)}`);
@@ -336,7 +333,7 @@ async function main() {
     console.log(`  ewmaHalflife:  ${best.params.ewmaHalflife}日`);
   }
 
-  console.log(`\nパフォーマンス:`);
+  console.log('\nパフォーマンス:');
   console.log(`  総利回り：      ${(best.totalReturn * 100).toFixed(2)}%`);
   console.log(`  シャープレシオ： ${best.sharpeRatio.toFixed(2)}`);
   console.log(`  勝率：          ${(best.winRate * 100).toFixed(1)}%`);
@@ -448,9 +445,9 @@ async function main() {
   console.log('\n' + '='.repeat(80));
   console.log('💡 推奨設定');
   console.log('='.repeat(80));
-  console.log(`\n以下のパラメータを推奨します：`);
-  console.log(`\n\`\`\`javascript`);
-  console.log(`{`);
+  console.log('\n以下のパラメータを推奨します：');
+  console.log('\n```javascript');
+  console.log('{');
   console.log(`  lambdaReg: ${best.params.lambdaReg.toFixed(1)},`);
   console.log(`  nFactors: ${best.params.nFactors},`);
   console.log(`  quantile: ${best.params.quantile.toFixed(1)},`);
@@ -458,8 +455,8 @@ async function main() {
   console.log(`  dailyLossStop: ${best.params.dailyLossStop.toFixed(2)},`);
   console.log(`  useEwma: ${best.params.useEwma},`);
   console.log(`  ewmaHalflife: ${best.params.ewmaHalflife}`);
-  console.log(`}`);
-  console.log(`\`\`\``);
+  console.log('}');
+  console.log('```');
 
   logger.info('Parameter optimization completed', {
     bestParams: best.params,

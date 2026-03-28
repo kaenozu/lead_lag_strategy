@@ -84,7 +84,7 @@ function analyzeStrategy() {
     { name: 'λ=0.99', config: { lambdaReg: 0.99 } },
     { name: '分位点 0.3', config: { quantile: 0.3 } },
     { name: '分位点 0.5', config: { quantile: 0.5 } },
-    { name: '因子数 5', config: { nFactors: 5 } },
+    { name: '因子数 5', config: { nFactors: 5 } }
   ];
 
   const baseConfig = {
@@ -140,7 +140,7 @@ function analyzeStrategy() {
     { name: 'コスト 0%', rate: 0 },
     { name: 'コスト 0.05%', rate: 0.0005 },
     { name: 'コスト 0.1%', rate: 0.001 },
-    { name: 'コスト 0.2%', rate: 0.002 },
+    { name: 'コスト 0.2%', rate: 0.002 }
   ];
 
   console.log('\n【取引コスト比較】');
@@ -173,7 +173,7 @@ function analyzeStrategy() {
     { name: '平滑化α=0.5', smoothingAlpha: 0.5 },
     { name: '平滑化α=0.7', smoothingAlpha: 0.7 },
     { name: 'ターンオーバー制限 0.3', maxTurnoverPerDay: 0.3 },
-    { name: 'ターンオーバー制限 0.7', maxTurnoverPerDay: 0.7 },
+    { name: 'ターンオーバー制限 0.7', maxTurnoverPerDay: 0.7 }
   ];
 
   console.log('\n【安定化パラメータ比較】');
@@ -210,7 +210,7 @@ function analyzeStrategy() {
     { name: '最大ウェイト 0.5', maxAbsWeight: 0.5 },
     { name: '最大ウェイト 1.0', maxAbsWeight: 1.0 },
     { name: '日次損失制限 3%', dailyLossStop: 0.03 },
-    { name: '日次損失制限 5%', dailyLossStop: 0.05 },
+    { name: '日次損失制限 5%', dailyLossStop: 0.05 }
   ];
 
   console.log('\n【リスク制限比較】');
@@ -397,7 +397,7 @@ function analyzeStrategy() {
   console.log('='.repeat(70));
   
   const bestMetrics = optimalMetrics.AR > baseMetrics.AR ? optimalMetrics : baseMetrics;
-  const bestConfig = optimalMetrics.AR > baseMetrics.AR ? optimalConfig : baseConfig;
+  const _bestConfig = optimalMetrics.AR > baseMetrics.AR ? optimalConfig : baseConfig;
   const bestName = optimalMetrics.AR > baseMetrics.AR ? '最適化版' : '現在版';
   
   console.log(`\n推奨：${bestName}`);

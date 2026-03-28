@@ -17,7 +17,7 @@ const {
   computeCFull
 } = require('./common');
 const { fetchOhlcvDateRangeForTickers } = require('../lib/data');
-const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
+const { weightedReturn } = require('../lib/backtestUtils');
 
 // ============================================================================
 // グリッド定義
@@ -34,7 +34,7 @@ const GRID = {
 
 // ウォークフォワード設定
 const WF = {
-  trainRatio: 0.7,   // 70% を学習、30% をテスト
+  trainRatio: 0.7   // 70% を学習、30% をテスト
 };
 
 // ============================================================================
@@ -78,7 +78,7 @@ function runSingleBacktest(returnsUs, returnsJp, returnsJpOc, params, CFull) {
 
     weights = weights.map(w => w * positionSize);
     const retNext = returnsJpOc[i].values;
-    let strategyRet = weightedReturn(weights, retNext);
+    const strategyRet = weightedReturn(weights, retNext);
 
     if (params.consecutiveLossThreshold > 0) {
       if (strategyRet < 0) prevConsecutiveLoss++;

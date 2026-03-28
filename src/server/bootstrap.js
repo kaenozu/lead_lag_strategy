@@ -153,17 +153,23 @@ function createApp() {
   const apiKeyAuth = createApiKeyAuth(logger);
 
   // Middleware
-  // CORS configuration - restrict to known origins in production
-  const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
+  // CORS: explicit allowlist only (set ALLOWED_ORIGINS=comma-separated for deploy/preview hosts)
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
     : ['http://localhost:3000', 'http://127.0.0.1:3000'];
-  
+
   app.use(cors({
-    origin: function(origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.github.dev')) {
+    origin(origin, callback) {
+      if (!origin) {
+        // Supertest and CLI clients omit Origin; only enforce in production.
+        if (process.env.NODE_ENV !== 'production') {
+          return callback(null, true);
+        }
+        logger.warn('CORS blocked request with no Origin (not allowed in production)');
+        return callback(new Error('Not allowed by CORS'));
+      }
+
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked request from: ${origin}`);

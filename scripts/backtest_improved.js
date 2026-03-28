@@ -25,8 +25,7 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const {
-  computePerformanceMetrics,
-  applyTransactionCosts
+  computePerformanceMetrics
 } = require('../lib/portfolio');
 const {
   calculateVolatility,
@@ -315,7 +314,7 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 改善機能:`);
+  console.log('\n📋 改善機能:');
   console.log(`  1. 日次損失ストップ：${(IMPROVED_CONFIG.dailyLossStop * 100).toFixed(1)}%`);
   console.log(`  2. ボラティリティ調整：閾値${(IMPROVED_CONFIG.volatilityThreshold * 100).toFixed(1)}%, 縮小率${(IMPROVED_CONFIG.volatilityReduction * 100).toFixed(0)}%`);
   console.log(`  3. ショート比率：${IMPROVED_CONFIG.shortRatio.toFixed(1)}`);
@@ -325,7 +324,7 @@ async function main() {
 
   // データ取得
   const winDays = IMPROVED_CONFIG.sectorLookback + config.backtest.windowLength + 80;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),

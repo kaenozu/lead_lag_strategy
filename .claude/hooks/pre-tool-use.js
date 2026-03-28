@@ -15,7 +15,7 @@ const PROTECTED_FILES = [
   'config/runtime-data-source.json',
   'package-lock.json',
   '.gitignore',
-  '.claudeignore',
+  '.claudeignore'
 ];
 
 // Protected patterns
@@ -23,7 +23,7 @@ const PROTECTED_PATTERNS = [
   /\.env\..*$/,
   /.*\.key$/,
   /.*\.secret$/,
-  /.*password.*\.json$/,
+  /.*password.*\.json$/
 ];
 
 /**
@@ -66,14 +66,14 @@ function preToolUse(context) {
   const logEntry = {
     timestamp: new Date().toISOString(),
     tool: tool,
-    args: sanitizeArgs(args),
+    args: sanitizeArgs(args)
   };
   
   // Append to audit log
   const auditLogPath = path.join(process.cwd(), '.claude', 'audit.log');
   try {
     fs.appendFileSync(auditLogPath, JSON.stringify(logEntry) + '\n');
-  } catch (e) {
+  } catch {
     // Silent fail for logging
   }
   
@@ -84,7 +84,7 @@ function preToolUse(context) {
       return {
         error: true,
         message: `⚠️ SECURITY BLOCK: Attempted to modify protected file: ${filePath}`,
-        blocked: true,
+        blocked: true
       };
     }
   }
@@ -100,10 +100,10 @@ function preToolUse(context) {
       'sudo rm',
       'mkfs',
       'dd if=/dev/zero',
-      ':\\(\\)\\{:\\|:&\\};:',',
+      ':\\(\\)\\{:\\|:&\\};:',
       'chmod -R 777 /',
       'wget.*\\|.*sh',
-      'curl.*\\|.*sh',
+      'curl.*\\|.*sh'
     ];
     
     for (const pattern of dangerousCommands) {
@@ -111,7 +111,7 @@ function preToolUse(context) {
         return {
           error: true,
           message: `⚠️ SECURITY BLOCK: Dangerous command detected: ${command}`,
-          blocked: true,
+          blocked: true
         };
       }
     }

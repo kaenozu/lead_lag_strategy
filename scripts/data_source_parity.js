@@ -46,7 +46,7 @@ function percentile(sorted, p) {
 
 function compareCloseParity(aByTicker, bByTicker, tickers) {
   const perTicker = {};
-  let allAbsPctDiff = [];
+  const allAbsPctDiff = [];
 
   for (const t of tickers) {
     const aMap = new Map((aByTicker[t] || []).map((r) => [r.date, r]));

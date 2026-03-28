@@ -6,7 +6,6 @@
 
 const { createSkill } = require('./skill-base');
 const { runBacktest } = require('../backtest/real');
-const { config } = require('../lib/config');
 
 module.exports = createSkill({
   name: 'performance',
@@ -49,7 +48,12 @@ module.exports = createSkill({
     
     // 2. サマリーメトリクス
     const { totalReturn, annualReturn, risk, sharpe, maxDrawdown } = backtestResult.metrics;
-    
+    const trades = backtestResult.trades || [];
+    const tradeCount = trades.length;
+    const winCount = trades.filter(t => t.pnl > 0).length;
+    const ddAbs = Math.abs(maxDrawdown);
+    const calmarRatio = ddAbs > 0 ? annualReturn / ddAbs : (annualReturn > 0 ? Number.POSITIVE_INFINITY : 0);
+
     results.summary = {
       period: `${skillConfig.startDate} - ${skillConfig.endDate}`,
       totalReturn: totalReturn,
@@ -57,10 +61,10 @@ module.exports = createSkill({
       annualRisk: risk,
       sharpeRatio: sharpe,
       maxDrawdown: maxDrawdown,
-      calmarRatio: annualReturn / Math.abs(maxDrawdown),
-      winRate: backtestResult.trades.filter(t => t.pnl > 0).length / backtestResult.trades.length,
-      totalTrades: backtestResult.trades.length,
-      avgTrade: backtestResult.trades.reduce((a, t) => a + t.pnl, 0) / backtestResult.trades.length
+      calmarRatio,
+      winRate: tradeCount > 0 ? winCount / tradeCount : 0,
+      totalTrades: tradeCount,
+      avgTrade: tradeCount > 0 ? trades.reduce((a, t) => a + t.pnl, 0) / tradeCount : 0
     };
     
     // 3. 年別リターン
@@ -101,10 +105,11 @@ module.exports = createSkill({
         const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
         const variance = returns.reduce((sq, r) => sq + Math.pow(r - avgReturn, 2), 0) / returns.length;
         const stdDev = Math.sqrt(variance);
-        
+        const sharpeVal = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
+
         rollingSharpe.push({
           date: window[window.length - 1].date,
-          sharpe: avgReturn / stdDev * Math.sqrt(252)
+          sharpe: sharpeVal
         });
         
         rollingReturn.push({
@@ -170,10 +175,13 @@ module.exports = createSkill({
       }
     }
     
+    const negDrawdowns = drawdowns.filter(d => d.drawdown < 0);
     results.drawdown = {
       current: drawdowns[drawdowns.length - 1].drawdown,
       max: Math.min(...drawdowns.map(d => d.drawdown)),
-      avgDrawdown: drawdowns.filter(d => d.drawdown < 0).reduce((a, d) => a + d.drawdown, 0) / drawdowns.filter(d => d.drawdown < 0).length,
+      avgDrawdown: negDrawdowns.length > 0
+        ? negDrawdowns.reduce((a, d) => a + d.drawdown, 0) / negDrawdowns.length
+        : 0,
       periods: ddPeriods.sort((a, b) => a.maxDrawdown - b.maxDrawdown).slice(0, 10)
     };
     
@@ -184,18 +192,20 @@ module.exports = createSkill({
       const longTrades = backtestResult.trades.filter(t => t.side === 'long');
       const shortTrades = backtestResult.trades.filter(t => t.side === 'short');
       
+      const longN = longTrades.length;
+      const shortN = shortTrades.length;
       results.attribution = {
         long: {
           totalPnl: longTrades.reduce((a, t) => a + t.pnl, 0),
-          trades: longTrades.length,
-          winRate: longTrades.filter(t => t.pnl > 0).length / longTrades.length,
-          avgPnl: longTrades.reduce((a, t) => a + t.pnl, 0) / longTrades.length
+          trades: longN,
+          winRate: longN > 0 ? longTrades.filter(t => t.pnl > 0).length / longN : 0,
+          avgPnl: longN > 0 ? longTrades.reduce((a, t) => a + t.pnl, 0) / longN : 0
         },
         short: {
           totalPnl: shortTrades.reduce((a, t) => a + t.pnl, 0),
-          trades: shortTrades.length,
-          winRate: shortTrades.filter(t => t.pnl > 0).length / shortTrades.length,
-          avgPnl: shortTrades.reduce((a, t) => a + t.pnl, 0) / shortTrades.length
+          trades: shortN,
+          winRate: shortN > 0 ? shortTrades.filter(t => t.pnl > 0).length / shortN : 0,
+          avgPnl: shortN > 0 ? shortTrades.reduce((a, t) => a + t.pnl, 0) / shortN : 0
         },
         byMonth: calculateMonthlyAttribution(backtestResult.trades)
       };

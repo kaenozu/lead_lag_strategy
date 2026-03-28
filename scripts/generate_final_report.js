@@ -437,7 +437,7 @@ try {
   
   console.log(`\n📊 総合評価：${report.phase4_finalEvaluation.totalScore.percentage}`);
   console.log(`📈 推奨事項：${report.executiveSummary.recommendation}`);
-  console.log(`📁 保存先：results/optimization_final_report.*`);
+  console.log('📁 保存先：results/optimization_final_report.*');
   
   console.log('\n' + '='.repeat(80));
   console.log('最適化作業 完了');

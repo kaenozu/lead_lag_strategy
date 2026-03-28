@@ -31,7 +31,7 @@ function loadLocalData(dataDir, tickers) {
       const content = fs.readFileSync(filePath, 'utf-8');
       const lines = content.split('\n').slice(1).filter(l => l.trim());
       results[ticker] = lines.map(line => {
-        const [date, open, high, low, close] = line.split(',');
+        const [date, open, , , close] = line.split(',');
         return { date, open: parseFloat(open), close: parseFloat(close) };
       });
     } else {
@@ -92,7 +92,6 @@ function swingMeanReversion(retJpCC, params) {
   // 状態変数
   let cumulativeReturn = 1.0;
   let peak = 1.0;
-  let currentDD = 0;
   let consecutiveLoss = 0;
   
   // ポジション管理
@@ -181,7 +180,6 @@ function swingMeanReversion(retJpCC, params) {
         
         cumulativeReturn *= (1 + portfolioReturn);
         peak = Math.max(peak, cumulativeReturn);
-        currentDD = (cumulativeReturn - peak) / peak;
         
         // 新規ポジション構築
         position = {

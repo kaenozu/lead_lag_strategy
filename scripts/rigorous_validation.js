@@ -1,22 +1,17 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
 const { config } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const { buildPortfolio, computePerformanceMetrics, applyTransactionCosts } = require('../lib/portfolio');
-const { correlationMatrixSample } = require('../lib/math');
 const { fetchOhlcvDateRangeForTickers } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 const { buildReturnMatricesFromOhlcv, computeCFull } = require('../backtest/common');
-const { weightedReturn, averageMomentumWindow } = require('../lib/backtestUtils');
+const { weightedReturn } = require('../lib/backtestUtils');
 const { createLogger } = require('../lib/logger');
 
 const logger = createLogger('RigorousValidation');
 
 function runStrategy(returnsUs, returnsJp, returnsJpOc, params, CFull, startIdx, endIdx) {
-  const nJp = returnsJpOc[0].values.length;
   const signalGen = new LeadLagSignal({
     lambdaReg: params.lambdaReg,
     nFactors: params.nFactors,
@@ -34,7 +29,7 @@ function runStrategy(returnsUs, returnsJp, returnsJpOc, params, CFull, startIdx,
     const retUsLatest = returnsUs[i - 1].values;
 
     const signal = signalGen.computeSignal(retUsWindow, retJpWindow, retUsLatest, SECTOR_LABELS, CFull);
-    let weights = buildPortfolio(signal, params.quantile);
+    const weights = buildPortfolio(signal, params.quantile);
 
     let ret = weightedReturn(weights, returnsJpOc[i].values);
     ret = applyTransactionCosts(ret, { slippage: 0, commission: 0 }, prevWeights, weights);

@@ -133,33 +133,33 @@ if (require.main === module) {
   (async () => {
     try {
       switch (command) {
-        case 'list':
-          listSkills();
-          break;
+      case 'list':
+        listSkills();
+        break;
           
-        case 'run':
-        case 'all':
-          if (command === 'all' || args[1] === 'all') {
-            await runAllSkills();
-          } else if (!args[1]) {
-            console.error('Error: Skill name required');
-            console.error('Usage: node skills/index.js run <skill-name>');
-            process.exit(1);
-          } else {
-            await runSkill(args[1]);
-          }
-          break;
+      case 'run':
+      case 'all':
+        if (command === 'all' || args[1] === 'all') {
+          await runAllSkills();
+        } else if (!args[1]) {
+          console.error('Error: Skill name required');
+          console.error('Usage: node skills/index.js run <skill-name>');
+          process.exit(1);
+        } else {
+          await runSkill(args[1]);
+        }
+        break;
           
-        case 'info':
-          if (!args[1]) {
-            console.error('Error: Skill name required');
-            process.exit(1);
-          }
-          console.log(getSkillInfo(args[1]));
-          break;
+      case 'info':
+        if (!args[1]) {
+          console.error('Error: Skill name required');
+          process.exit(1);
+        }
+        console.log(getSkillInfo(args[1]));
+        break;
           
-        default:
-          listSkills();
+      default:
+        listSkills();
       }
     } catch (error) {
       console.error('Error:', error.message);

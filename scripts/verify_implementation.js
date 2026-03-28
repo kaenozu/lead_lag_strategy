@@ -32,8 +32,8 @@ console.log(`    N_FACTORS: ${N_FACTORS}`);
 console.log(`    LAMBDA_REG: ${LAMBDA_REG}`);
 console.log(`    QUANTILE: ${QUANTILE}`);
 console.log(`    WARMUP_PERIOD: ${WARMUP_PERIOD}`);
-console.log(`    取引コスト (slippage): 0`);
-console.log(`    取引コスト (commission): 0`);
+console.log('    取引コスト (slippage): 0');
+console.log('    取引コスト (commission): 0');
 
 // 2. ルックアヘッドバイアスのチェック
 console.log('\n[2/4] ルックアヘッドバイアスの検証...');
@@ -98,7 +98,7 @@ console.log('\n[3/4] 取引コストの検証...');
 
 function verifyTransactionCosts() {
   const weights = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0, 0, 0, 0, 0, 0, 0];
-  const prevWeights = new Array(weights.length).fill(0);
+  const _prevWeights = new Array(weights.length).fill(0);
   
   const turnover = weights.reduce((sum, w) => sum + Math.abs(w), 0) / 2;
   const costRate = 0;
@@ -253,7 +253,7 @@ async function main() {
 
   const lookaheadOk = checkLookaheadBias(retUs, retJp, retJpOc, sectorLabels, CFull);
   const costs = verifyTransactionCosts();
-  const signal = verifySignalCalculation(retUs, retJp, sectorLabels, CFull);
+  const _signal = verifySignalCalculation(retUs, retJp, sectorLabels, CFull);
 
   console.log('\n' + '='.repeat(80));
   console.log('簡易バックテスト（サンプル 100 日）');

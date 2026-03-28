@@ -86,17 +86,6 @@ function buildReturnMatrices(jpData) {
 // ============================================================================
 
 /**
- * 簡易ケリー基準の計算
- * @param {number} winRate - 勝率
- * @param {number} profitLossRatio - 損益比率（平均利益/平均損失）
- * @param {number} fraction - ケリー比率の分数（0.25=1/4 ケリー）
- */
-function calculateKellyPosition(winRate, profitLossRatio, fraction = 0.25) {
-  const kelly = winRate - (1 - winRate) / profitLossRatio;
-  return Math.max(0, Math.min(1, kelly * fraction));
-}
-
-/**
  * ボラティリティ・ターゲットによるポジション調整
  */
 function volatilityTargetPosition(currentVol, targetVol, maxPosition = 1.0) {
@@ -112,21 +101,6 @@ function drawdownBasedPosition(currentDD, maxDD, minPosition = 0.0) {
   if (currentDD >= 0) return 1.0;
   const ddRatio = currentDD / maxDD; // 0 to 1 (1 = maxDD reached)
   return Math.max(minPosition, 1 - ddRatio);
-}
-
-/**
- * 相関ベースのリスクバジェット（簡易版）
- */
-function correlationRiskBudget(weights, covariance) {
-  const n = weights.length;
-  let portfolioVar = 0;
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      portfolioVar += weights[i] * weights[j] * (covariance[i]?.[j] || 0);
-    }
-  }
-  const portfolioVol = Math.sqrt(portfolioVar);
-  return portfolioVol;
 }
 
 // ============================================================================
@@ -145,7 +119,6 @@ function advancedMeanReversion(retJpCC, retJpOc, params) {
   let peak = 1.0;
   let currentDD = 0;
   let consecutiveLoss = 0;
-  let consecutiveWin = 0;
   
   // 損益計算用
   const tradeReturns = [];
@@ -251,7 +224,6 @@ function advancedMeanReversion(retJpCC, retJpOc, params) {
     if (!shouldTrade || positionSize <= 0.05) {
       // ポジション決済
       if (openPosition) {
-        const exitReturn = 0; // 決済しない場合は 0
         returns.push(0);
         trades.push({
           date: retJpOc[i].date,
@@ -304,17 +276,14 @@ function advancedMeanReversion(retJpCC, retJpOc, params) {
     if (portfolioReturn > 0) {
       winCount++;
       totalProfit += portfolioReturn;
-      consecutiveWin++;
       consecutiveLoss = 0;
     } else {
       lossCount++;
       totalLoss += Math.abs(portfolioReturn);
       consecutiveLoss++;
-      consecutiveWin = 0;
     }
     
     // ドローダウン更新
-    const prevPeak = peak;
     cumulativeReturn *= (1 + portfolioReturn);
     peak = Math.max(peak, cumulativeReturn);
     currentDD = (cumulativeReturn - peak) / peak;

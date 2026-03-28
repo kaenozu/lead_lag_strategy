@@ -255,14 +255,14 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 戦略設定:`);
+  console.log('\n📋 戦略設定:');
   console.log(`  モメンタム期間：${STRATEGY_CONFIG.momentumWindow}日`);
   console.log(`  取引銘柄：上位・下位各${(STRATEGY_CONFIG.quantile * 100).toFixed(0)}%`);
   console.log(`  リバランス：${STRATEGY_CONFIG.rebalanceDays}日ごと`);
 
   // データ取得
   const winDays = 300;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
@@ -272,7 +272,7 @@ async function main() {
   const usData = usRes.byTicker;
   const jpData = jpRes.byTicker;
 
-  const { retUs, retJp, retJpOc } = buildReturnMatricesFromOhlcv(
+  const { retUs: _retUs, retJpOc } = buildReturnMatricesFromOhlcv(
     usData,
     jpData,
     US_ETF_TICKERS,
@@ -280,7 +280,7 @@ async function main() {
     config.backtest.jpWindowReturn
   );
 
-  console.log(`📊 取得完了：${retUs.length}営業日分`);
+  console.log(`📊 取得完了：${_retUs.length}営業日分`);
 
   // パラメータグリッドサーチ
   console.log('\n🔍 パラメータグリッドサーチ中...');

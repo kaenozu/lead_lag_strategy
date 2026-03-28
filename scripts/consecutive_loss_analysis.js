@@ -99,7 +99,6 @@ function consecutiveLossAnalysis() {
   // 閾値：2-7 日、削減率：25%-100%
   for (let threshold = 2; threshold <= 7; threshold++) {
     for (let reduction = 0.25; reduction <= 1.0; reduction += 0.25) {
-      let cumulative = 1;
       let consecutiveLoss = 0;
       let positionSize = 1.0;
       const returns = [];
@@ -119,7 +118,6 @@ function consecutiveLossAnalysis() {
         
         const adjReturn = r.return * positionSize;
         returns.push(adjReturn);
-        cumulative *= (1 + adjReturn);
       }
       
       const metrics = computePerformanceMetrics(returns);
@@ -151,7 +149,7 @@ function consecutiveLossAnalysis() {
 
   // 最佳ルール
   const bestRule = ruleTests[0];
-  console.log(`\n【最佳ルール】`);
+  console.log('\n【最佳ルール】');
   console.log(`閾値：${bestRule.threshold}日、削減率：${bestRule.reduction*100}%`);
   console.log(`AR: ${bestRule.AR.toFixed(2)}%, R/R: ${bestRule.RR.toFixed(2)}, 累積：${bestRule.Cumulative.toFixed(2)}%`);
 

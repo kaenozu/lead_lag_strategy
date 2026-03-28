@@ -74,13 +74,11 @@ module.exports = createSkill({
     
     // 2. リターン行列構築
     console.log('📊 リターン行列構築中...');
-    const { returnsUs, returnsJp } = buildReturnMatricesFromOhlcv(
+    const { returnsJp } = buildReturnMatricesFromOhlcv(
       fetchResult.byTicker,
       US_ETF_TICKERS,
       JP_ETF_TICKERS
     );
-    
-    const allReturns = [...returnsUs, ...returnsJp].filter(r => r.length > 0);
     
     // 3. ボラティリティ計算
     console.log('📉 ボラティリティ計算中...');
@@ -175,7 +173,7 @@ module.exports = createSkill({
     const targetVol = skillConfig.targetVolatility;
     
     // ボラティリティターゲットに基づくポジションサイズ
-    const volScaling = targetVol / avgVol;
+    const volScaling = avgVol > 0 ? targetVol / avgVol : 0;
     
     results.positionLimits = {
       targetVolatility: targetVol,

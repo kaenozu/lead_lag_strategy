@@ -90,7 +90,7 @@ describe('ops routes', () => {
   });
 
   test('POST /api/presets/apply updates the backtest config', async () => {
-    const before = {
+    const _before = {
       activePreset: config.operations.activePreset,
       windowLength: config.backtest.windowLength,
       lambdaReg: config.backtest.lambdaReg,
