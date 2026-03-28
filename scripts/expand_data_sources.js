@@ -58,18 +58,20 @@ console.log('='.repeat(80));
 
 // Yahoo! ファイナンスからデータ取得（簡易版）
 async function fetchFromYahoo(ticker, startDate = '2010-01-01', endDate = '2025-12-31') {
-  console.log(`  ${ticker}...`);
-  
+  // ティッカー名のサニタイズ（パストラバーサル対策）
+  const safeTicker = ticker.replace(/[^a-zA-Z0-9.\-]/g, '_');
+  console.log(`  ${safeTicker}...`);
+
   try {
     // yahoo-finance2 を使用
     const yahooFinance = require('yahoo-finance2').default;
-    
+
     const result = await yahooFinance.chart(ticker, {
       period1: startDate,
       period2: endDate,
       interval: '1d'
     });
-    
+
     const data = result.quotes
       .filter(q => q.close !== null && q.close > 0)
       .map(q => ({
@@ -80,7 +82,7 @@ async function fetchFromYahoo(ticker, startDate = '2010-01-01', endDate = '2025-
         close: q.close,
         volume: q.volume
       }));
-    
+
     return data;
   } catch (error) {
     console.error(`  ${ticker} Error: ${error.message}`);

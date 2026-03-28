@@ -145,8 +145,8 @@ function combineSignals(pcaSig, mrSig, method, pcaWeight = 0.5) {
         // 一致：強シグナル
         combined[i] = (Math.abs(pcaSig[i]) + Math.abs(mrSig[i])) / 2 * pcaSign;
       } else {
-        // 不一致：弱シグナルまたはゼロ
-        combined[i] = (pcaSig[i] + mrSig[i]) / 2;
+        // 不一致：加重平均（単純平均だとキャンセルされるのを防ぐ）
+        combined[i] = pcaSig[i] * pcaWeight + mrSig[i] * (1 - pcaWeight);
       }
     }
   } else if (method === 'max') {

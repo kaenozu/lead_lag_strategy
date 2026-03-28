@@ -111,7 +111,7 @@ function drawdownBasedPosition(currentDD, maxDD, minPosition = 0.0) {
  */
 function correlationRiskBudget(weights, covariance) {
   const n = weights.length;
-  const portfolioVar = 0;
+  let portfolioVar = 0;
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
       portfolioVar += weights[i] * weights[j] * (covariance[i]?.[j] || 0);
@@ -332,8 +332,8 @@ function advancedMeanReversion(retJpCC, retJpOc, params) {
   
   // 損益比率計算
   const avgProfit = winCount > 0 ? totalProfit / winCount : 0;
-  const avgLoss = lossCount > 0 ? totalLoss / lossCount : 1;
-  const profitLossRatio = avgLoss > 0 ? avgProfit / avgLoss : 1;
+  const avgLoss = lossCount > 0 ? totalLoss / lossCount : 0;
+  const profitLossRatio = avgLoss > 0 ? avgProfit / avgLoss : (avgProfit > 0 ? Infinity : 1);
   const winRate = tradeReturns.length > 0 ? winCount / tradeReturns.length : 0;
   
   return {

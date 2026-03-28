@@ -270,7 +270,13 @@ async function main() {
   console.log('\n' + '='.repeat(80));
   console.log('リスク管理付きバックテスト');
   console.log('='.repeat(80));
-  
+
+  // 結果が空の場合はエラー
+  if (results.length === 0) {
+    console.error('エラー：最適化結果が空です。パラメータグリッドを見直してください。');
+    return;
+  }
+
   const bestParams = results[0];
   console.log(`\n最適パラメータ：lookback=${bestParams.lookback}, quantile=${bestParams.quantile.toFixed(2)}`);
   
