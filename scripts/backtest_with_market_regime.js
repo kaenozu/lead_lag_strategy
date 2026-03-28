@@ -46,7 +46,7 @@ const BACKTEST_CONFIG = {
     lookback: 60,            // 60日MA（実データ198日以上で動作）
     bullThreshold: 1.02,     // MA比+2%超で強気判定
     bearThreshold: 0.98,     // MA比-2%未満で弱気判定
-    positionSizeBull: 1.0,
+    positionSizeBull: 1.0,   // 強気時はフルポジション（P3直近OOSが好調なため維持）
     positionSizeBear: 0.0,   // 弱気時は取引停止（損失抑制）
     positionSizeNeutral: 0.75 // 中立時は75%（0.5→0.75: 短中期ドラッグを軽減）
   },
@@ -57,7 +57,9 @@ const BACKTEST_CONFIG = {
   sectorFilterEnabled: true,
   sectorLookback: 60,
   sectorMinWinRate: 0.3,
-  sectorMinReturn: -0.001
+  sectorMinReturn: -0.001,
+  // bull 期間の quantile: 1.0 = 変更なし（P3直近好調のため過度な分散は行わない）
+  bullQuantileMultiplier: 1.0
 };
 
 /**
@@ -221,10 +223,15 @@ function runBacktestWithMarketRegime(
       CFull
     );
 
-    // ポートフォリオ構築（ポジションサイズ調整）
+    // ポートフォリオ構築（ポジションサイズ調整 + regime別 quantile）
+    // bull期間はシグナルが希薄なため quantile を広げてリスク分散
+    const bullQMultiplier = params.bullQuantileMultiplier ?? 1.0;
+    const effectiveQuantile = (marketRegime.regime === MarketRegime.BULL && bullQMultiplier !== 1.0)
+      ? Math.min(0.5, params.quantile * bullQMultiplier)
+      : params.quantile;
     let weights = buildPortfolio(
       signal,
-      params.quantile,
+      effectiveQuantile,
       excludedIndices,
       positionSize,
       params.shortRatio ?? 1.0

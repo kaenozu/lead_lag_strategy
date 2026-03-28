@@ -37,8 +37,8 @@ const WF_CONFIG = {
   stepDays: 20,          // ステップ幅（約 1 ヶ月）
   totalPeriods: 6,       // 期間数
 
-  // 実運用中の現行パラメータで再実行する
-  useCurrentParams: true,
+  // グリッドサーチで直近に最適なパラメータを探索（#3: 直近P3以降に有効な設定を発見するため）
+  useCurrentParams: false,
   currentParams: {
     lambdaReg: BACKTEST_CONFIG.lambdaReg,
     nFactors: BACKTEST_CONFIG.nFactors,
@@ -52,10 +52,10 @@ const WF_CONFIG = {
     mddPenalty: 6.0
   },
   
-  // パラメータグリッド（簡易版）
-  lambdaReg: [0.5, 0.7, 0.9],
+  // パラメータグリッド（0.2 を追加して BACKTEST_CONFIG と整合）
+  lambdaReg: [0.3, 0.5, 0.7, 0.9],
   nFactors: [1, 2, 3],
-  quantile: [0.4, 0.5, 0.6]
+  quantile: [0.2, 0.3, 0.4, 0.5]
 };
 
 function calculateCompositeScore(result) {
