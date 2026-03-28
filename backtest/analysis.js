@@ -40,6 +40,7 @@ function buildPortfolio(signal, quantile) {
 
 function computeMetrics(returns) {
   if (!returns.length) return { AR: 0, RISK: 0, RR: 0, MDD: 0, Cumulative: 1, Sharpe: 0 };
+  if (returns.length === 1) return { AR: returns[0] * 252, RISK: 0, RR: 0, MDD: 0, Cumulative: 1 + returns[0], Sharpe: 0 };
   const ar = returns.reduce((a, b) => a + b, 0) / returns.length * 252;
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const risk = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1)) * Math.sqrt(252);
@@ -173,6 +174,8 @@ async function main() {
   const nJp = JP_ETF_TICKERS.length;
   const results = [];
   const signalGen = new LeadLagSignal(CONFIG);
+  let prevWeights = null;
+  const totalCostRate = CONFIG.transactionCosts.slippage + CONFIG.transactionCosts.commission;
 
   for (let i = CONFIG.warmupPeriod; i < retJpOc.length; i++) {
     const usWin = retUs.slice(i - CONFIG.windowLength, i).map(r => r.values);
@@ -182,7 +185,13 @@ async function main() {
     const weights = buildPortfolio(signal, CONFIG.quantile);
     const retNext = retJpOc[i].values;
     let ret = weights.reduce((s, w, j) => s + w * retNext[j], 0);
-    ret -= CONFIG.transactionCosts.slippage + CONFIG.transactionCosts.commission;
+    if (prevWeights) {
+      let turnover = 0;
+      for (let j = 0; j < nJp; j++) turnover += Math.abs(weights[j] - prevWeights[j]);
+      turnover /= 2;
+      ret -= turnover * totalCostRate;
+    }
+    prevWeights = weights;
     results.push({ date: retJpOc[i].date, return: ret });
   }
 

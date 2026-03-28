@@ -54,7 +54,7 @@ const PARAM_GRID = {
 
 function buildPortfolio(signal, quantile = 0.4, riskConfig = null, currentVolatility = 0.10) {
   const n = signal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
+  const q = Math.max(1, Math.round(n * quantile));
   const indexed = signal.map((val, idx) => ({ val, idx })).sort((a, b) => a.val - b.val);
   const longIdx = indexed.slice(-q).map(x => x.idx);
   const shortIdx = indexed.slice(0, q).map(x => x.idx);
@@ -254,6 +254,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
 
 function computeMetrics(returns) {
   if (!returns.length) return { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0 };
+  if (returns.length === 1) return { AR: returns[0] * 252, RISK: 0, RR: 0, MDD: 0, Total: returns[0] * 100 };
   const ar = returns.reduce((a, b) => a + b, 0) / returns.length * 252;
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const risk = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1)) * Math.sqrt(252);
@@ -305,7 +306,7 @@ async function main() {
         const config = { ...BASE_CONFIG, lambdaReg: l, windowLength: w, quantile: q, warmupPeriod: w };
         const result = runStrategyWithRisk(retUs, retJp, retJpOc, config, SECTOR_LABELS, CFull, RISK_CONFIG);
         const metrics = computeMetrics(result.map(r => r.return));
-        if (metrics.RR > bestRR && metrics.MDD > -20) {
+        if (metrics.RR > bestRR && metrics.MDD > -15) {
           bestRR = metrics.RR;
           bestConfig = { ...config };
         }

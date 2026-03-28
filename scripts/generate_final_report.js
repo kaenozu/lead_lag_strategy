@@ -302,25 +302,25 @@ ${report.executiveSummary.keyFindings.map(f => `- ${f}`).join('\n')}
 **ステータス**: ✅ 完了
 
 ### 期間
-${report.phase2_longtermbacktest.period}
+${report.phase2_longTermBacktest.period}
 
 ### 全体パフォーマンス
 | 指標 | 値 |
 |------|-----|
-| 年率リターン | ${report.phase2_longtermbacktest.overallPerformance.AR} |
-| 年率リスク | ${report.phase2_longtermbacktest.overallPerformance.risk} |
-| シャープレシオ | ${report.phase2_longtermbacktest.overallPerformance.sharpe} |
-| 最大 DD | ${report.phase2_longtermbacktest.overallPerformance.mdd} |
-| 累積リターン | ${report.phase2_longtermbacktest.overallPerformance.cumulative} |
-| 勝率 | ${report.phase2_longtermbacktest.overallPerformance.winRate} |
+| 年率リターン | ${report.phase2_longTermBacktest.overallPerformance.AR} |
+| 年率リスク | ${report.phase2_longTermBacktest.overallPerformance.risk} |
+| シャープレシオ | ${report.phase2_longTermBacktest.overallPerformance.sharpe} |
+| 最大 DD | ${report.phase2_longTermBacktest.overallPerformance.mdd} |
+| 累積リターン | ${report.phase2_longTermBacktest.overallPerformance.cumulative} |
+| 勝率 | ${report.phase2_longTermBacktest.overallPerformance.winRate} |
 
 ### 年別パフォーマンス
 | 年 | AR | シャープレシオ | 最大 DD |
 |-----|------|---------------|---------|
-${report.phase2_longtermbacktest.yearlyPerformance.map(y => `| ${y.year} | ${y.AR} | ${y.sharpe} | ${y.mdd} |`).join('\n')}
+${report.phase2_longTermBacktest.yearlyPerformance.map(y => `| ${y.year} | ${y.AR} | ${y.sharpe} | ${y.mdd} |`).join('\n')}
 
 ### 主要な知見
-${report.phase2_longtermbacktest.keyInsights.map(i => `- ${i}`).join('\n')}
+${report.phase2_longTermBacktest.keyInsights.map(i => `- ${i}`).join('\n')}
 
 ---
 
@@ -331,19 +331,19 @@ ${report.phase2_longtermbacktest.keyInsights.map(i => `- ${i}`).join('\n')}
 ### 実装フィルタ
 | フィルタ | 設定 | 効果 |
 |----------|------|------|
-| 為替ヘッジ | ${report.phase3_improvedstrategy.filters.fxHedge.enabled ? 'ON' : 'OFF'} (threshold: ${report.phase3_improvedstrategy.filters.fxHedge.threshold}) | ${report.phase3_improvedstrategy.filters.fxHedge.effect} |
-| ボラティリティ調整 | ${report.phase3_improvedstrategy.filters.volatilityAdjustment.enabled ? 'ON' : 'OFF'} (target: ${report.phase3_improvedstrategy.filters.volatilityAdjustment.targetVol}) | ${report.phase3_improvedstrategy.filters.volatilityAdjustment.effect} |
-| 市場環境フィルタ | ${report.phase3_improvedstrategy.filters.marketFilter.enabled ? 'ON' : 'OFF'} (bull: ${report.phase3_improvedstrategy.filters.marketFilter.bull}, bear: ${report.phase3_improvedstrategy.filters.marketFilter.bear}) | ${report.phase3_improvedstrategy.filters.marketFilter.effect} |
+| 為替ヘッジ | ${report.phase3_improvedStrategy.filters.fxHedge.enabled ? 'ON' : 'OFF'} (threshold: ${report.phase3_improvedStrategy.filters.fxHedge.threshold}) | ${report.phase3_improvedStrategy.filters.fxHedge.effect} |
+| ボラティリティ調整 | ${report.phase3_improvedStrategy.filters.volatilityAdjustment.enabled ? 'ON' : 'OFF'} (target: ${report.phase3_improvedStrategy.filters.volatilityAdjustment.targetVol}) | ${report.phase3_improvedStrategy.filters.volatilityAdjustment.effect} |
+| 市場環境フィルタ | ${report.phase3_improvedStrategy.filters.marketFilter.enabled ? 'ON' : 'OFF'} (bull: ${report.phase3_improvedStrategy.filters.marketFilter.bull}, bear: ${report.phase3_improvedStrategy.filters.marketFilter.bear}) | ${report.phase3_improvedStrategy.filters.marketFilter.effect} |
 
 ### パフォーマンス比較
 | 指標 | 従来版 | 改良版 | 改善幅 |
 |------|--------|--------|--------|
-| 年率リターン | ${report.phase3_improvedstrategy.comparison.baseline.AR} | ${report.phase3_improvedstrategy.comparison.improved.AR} | ${report.phase3_improvedstrategy.comparison.improvement.AR} |
-| シャープレシオ | ${report.phase3_improvedstrategy.comparison.baseline.sharpe} | ${report.phase3_improvedstrategy.comparison.improved.sharpe} | ${report.phase3_improvedstrategy.comparison.improvement.sharpe} |
-| 最大 DD | ${report.phase3_improvedstrategy.comparison.baseline.mdd} | ${report.phase3_improvedstrategy.comparison.improved.mdd} | ${report.phase3_improvedstrategy.comparison.improvement.mdd} |
+| 年率リターン | ${report.phase3_improvedStrategy.comparison.baseline.AR} | ${report.phase3_improvedStrategy.comparison.improved.AR} | ${report.phase3_improvedStrategy.comparison.improvement.AR} |
+| シャープレシオ | ${report.phase3_improvedStrategy.comparison.baseline.sharpe} | ${report.phase3_improvedStrategy.comparison.improved.sharpe} | ${report.phase3_improvedStrategy.comparison.improvement.sharpe} |
+| 最大 DD | ${report.phase3_improvedStrategy.comparison.baseline.mdd} | ${report.phase3_improvedStrategy.comparison.improved.mdd} | ${report.phase3_improvedStrategy.comparison.improvement.mdd} |
 
 ### 主要な知見
-${report.phase3_improvedstrategy.keyInsights.map(i => `- ${i}`).join('\n')}
+${report.phase3_improvedStrategy.keyInsights.map(i => `- ${i}`).join('\n')}
 
 ---
 
@@ -352,14 +352,14 @@ ${report.phase3_improvedstrategy.keyInsights.map(i => `- ${i}`).join('\n')}
 ### 評価スコア
 | 評価項目 | 得点 | 最大 | 詳細 |
 |----------|------|------|------|
-${Object.entries(report.phase4_finalevaluation.scores).map(([k, v]) => `| ${k} | ${v.score} | ${v.max} | ${v.reason} |`).join('\n')}
-| **合計** | **${report.phase4_finalevaluation.totalScore.score}** | **${report.phase4_finalevaluation.totalScore.max}** | **${report.phase4_finalevaluation.totalScore.percentage}** |
+${Object.entries(report.phase4_finalEvaluation.scores).map(([k, v]) => `| ${k} | ${v.score} | ${v.max} | ${v.reason} |`).join('\n')}
+| **合計** | **${report.phase4_finalEvaluation.totalScore.score}** | **${report.phase4_finalEvaluation.totalScore.max}** | **${report.phase4_finalEvaluation.totalScore.percentage}** |
 
 ---
 
 ## 根本原因分析
 
-${report.rootcauseanalysis.hypotheses.map((h, i) => `### ${i + 1}. ${h.name}
+${report.rootCauseAnalysis.hypotheses.map((h, i) => `### ${i + 1}. ${h.name}
 - **確度**: ${h.probability}
 - **説明**: ${h.description}
 - **証拠**: ${h.evidence}
@@ -369,26 +369,26 @@ ${report.rootcauseanalysis.hypotheses.map((h, i) => `### ${i + 1}. ${h.name}
 
 ## 推奨アクション
 
-### ${report.recommendations.shortterm.title}
-${report.recommendations.shortterm.actions.map((a, i) => `
+### ${report.recommendations.shortTerm.title}
+${report.recommendations.shortTerm.actions.map((a, i) => `
 ${i + 1}. **${a.action}**
    - 期待効果：${a.expectedEffect}
    - 工数：${a.effort}
 `).join('\n')}
 
-### ${report.recommendations.mediumterm.title}
-${report.recommendations.mediumterm.actions.map((a, i) => `
+### ${report.recommendations.mediumTerm.title}
+${report.recommendations.mediumTerm.actions.map((a, i) => `
 ${i + 1}. **${a.action}**
    - 期待効果：${a.expectedEffect}
    - 工数：${a.effort}
 `).join('\n')}
 
-### ${report.recommendations.decisionmatrix.title}
+### ${report.recommendations.decisionMatrix.title}
 | シナリオ | 条件 | アクション |
 |----------|------|------------|
-${report.recommendations.decisionmatrix.scenarios.map(s => `| **${s.name}** | ${s.condition} | ${s.action} |`).join('\n')}
+${report.recommendations.decisionMatrix.scenarios.map(s => `| **${s.name}** | ${s.condition} | ${s.action} |`).join('\n')}
 
-**現状**: **${report.recommendations.decisionmatrix.currentStatus}**
+**現状**: **${report.recommendations.decisionMatrix.currentStatus}**
 
 ---
 
@@ -435,7 +435,7 @@ try {
   console.log('レポート生成完了');
   console.log('='.repeat(80));
   
-  console.log(`\n📊 総合評価：${report.phase4_finalevaluation.totalScore.percentage}`);
+  console.log(`\n📊 総合評価：${report.phase4_finalEvaluation.totalScore.percentage}`);
   console.log(`📈 推奨事項：${report.executiveSummary.recommendation}`);
   console.log(`📁 保存先：results/optimization_final_report.*`);
   

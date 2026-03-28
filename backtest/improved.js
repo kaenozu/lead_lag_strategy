@@ -86,30 +86,22 @@ function loadLocalData(dataDir, tickers) {
 // ============================================================================
 
 /**
- * パフォーマンス指標の計算（年率換算・表示単位補正）
- * @param {Array<number>} returns - リターン系列（日次）
- * @param {number} ann - 年率換算係数（デフォルト：252）
- * @returns {Object} パフォーマンス指標（AR, RISK はパーセント表示）
+ * パフォーマンス指標の計算（表示用、パーセント単位）
+ * NOTE: lib/portfolio/computePerformanceMetrics は小数単位（0.05 = 5%）を返すが、
+ *       この関数はパーセント単位（5.0 = 5%）で返す。スクリプトの表示用専用。
+ * @param {Array<number>} returns - リターン系列（日次、小数単位）
+ * @returns {Object} パフォーマンス指標（AR, RISK, MDD, Total はパーセント表示）
  */
-function computeMetrics(returns, ann = 252) {
+function computeMetrics(returns) {
     const m = computePerformanceMetrics(returns);
-    
-    // 年率リターン：日次 → 年率（×252）、パーセント表示（×100）
-    m.AR = (m.AR * ann / 252) * 100;
-    
-    // 年率リスク：日次 → 年率（×√252）、パーセント表示（×100）
-    m.RISK = (m.RISK * Math.sqrt(ann / 252)) * 100;
-    
-    // R/R 比：単位なし（そのまま）
-    m.RR = m.RR;
-    
-    // MDD：パーセント表示（×100）
-    m.MDD = m.MDD * 100;
-    
-    // Total：累積リターンから計算（パーセント表示）
-    m.Total = (m.Cumulative - 1) * 100;
-    
-    return m;
+    return {
+        AR: m.AR * 100,
+        RISK: m.RISK * 100,
+        RR: m.RR,
+        MDD: m.MDD * 100,
+        Total: (m.Cumulative - 1) * 100,
+        Cumulative: m.Cumulative
+    };
 }
 
 // ============================================================================

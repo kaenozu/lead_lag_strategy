@@ -65,6 +65,14 @@ function loadLocalData(dataDir, tickers) {
   return results;
 }
 
+function findPrevEntry(data, date) {
+  if (!data) return undefined;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (data[i].date < date) return data[i];
+  }
+  return undefined;
+}
+
 function buildReturnMatrices(usData, jpData) {
   const dates = [];
   const retUs = [];
@@ -83,7 +91,7 @@ function buildReturnMatrices(usData, jpData) {
     const jpOcReturns = [];
 
     for (const ticker of US_ETF_TICKERS) {
-      const prev = usData[ticker]?.find(r => r.date < date);
+      const prev = findPrevEntry(usData[ticker], date);
       const curr = usData[ticker]?.find(r => r.date === date);
       if (prev && curr) {
         usReturns.push((curr.close - prev.close) / prev.close);
@@ -91,7 +99,7 @@ function buildReturnMatrices(usData, jpData) {
     }
 
     for (const ticker of JP_ETF_TICKERS) {
-      const prevClose = jpData[ticker]?.find(r => r.date < date);
+      const prevClose = findPrevEntry(jpData[ticker], date);
       const curr = jpData[ticker]?.find(r => r.date === date);
       if (prevClose && curr) {
         jpReturns.push((curr.close - prevClose.close) / prevClose.close);
@@ -186,7 +194,7 @@ function calculateMarketFilter(prices, lookback, bullThreshold, bearThreshold) {
   return 0.5;                                // 中立：50% ポジション
 }
 
-function runImprovedBacktest(retUs, retJp, retJpOc, sectorLabels, CFull, dates) {
+function runImprovedBacktest(retUs, retJp, retJpOc, jpRawData, sectorLabels, CFull, dates) {
   const signalGen = new LeadLagSignal({
     lambdaReg: LAMBDA_REG,
     nFactors: N_FACTORS,
@@ -198,7 +206,7 @@ function runImprovedBacktest(retUs, retJp, retJpOc, sectorLabels, CFull, dates) 
   let prevWeights = null;
   
   // フィルタ計算用
-  const fxRates = calculateFXRate(retJpOc, dates);
+  const fxRates = calculateFXRate(jpRawData, dates);
   const jpPrices = []; // 市場環境判定用
 
   for (let i = WINDOW_LENGTH; i < retJpOc.length; i++) {
@@ -302,7 +310,7 @@ function main() {
   console.log(`  市場環境フィルタ：${MARKET_FILTER.enabled ? 'ON' : 'OFF'} (bull: ${MARKET_FILTER.bullThreshold}, bear: ${MARKET_FILTER.bearThreshold})`);
   
   const { strategyReturns, dailyReturns } = runImprovedBacktest(
-    retUs, retJp, retJpOc, config.sectorLabels, CFull, dates
+    retUs, retJp, retJpOc, jpData, config.sectorLabels, CFull, dates
   );
   console.log(`  完了：${strategyReturns.length}日分`);
 

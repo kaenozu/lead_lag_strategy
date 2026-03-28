@@ -15,11 +15,17 @@ describe('paper routes', () => {
   beforeAll(() => {
     prevOutputDir = config.data.outputDir;
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'leadlag-paper-routes-'));
+  });
+
+  beforeEach(() => {
     config.data.outputDir = tmpDir;
   });
 
-  afterAll(() => {
+  afterEach(() => {
     config.data.outputDir = prevOutputDir;
+  });
+
+  afterAll(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

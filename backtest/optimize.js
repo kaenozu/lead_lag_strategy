@@ -197,7 +197,7 @@ async function main() {
 
   for (let rank = 0; rank < topN.length; rank++) {
     const { params, trainMetrics } = topN[rank];
-    const testReturns = runSingleBacktest(testUs, testJp, testJpOc, params, CFull);
+    const testReturns = runSingleBacktest(testUs, testJp, testJpOc, params, trainCFull);
     const testMetrics = computePerformanceMetrics(testReturns);
     topN[rank].testMetrics = testMetrics;
 
