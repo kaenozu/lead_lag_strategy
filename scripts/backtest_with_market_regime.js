@@ -59,7 +59,11 @@ const BACKTEST_CONFIG = {
   sectorMinWinRate: 0.3,
   sectorMinReturn: -0.001,
   // bull 期間の quantile: 1.0 = 変更なし（P3直近好調のため過度な分散は行わない）
-  bullQuantileMultiplier: 1.0
+  bullQuantileMultiplier: 1.0,
+  // シグナル品質フィルター（bull期間のダイナミックなポジション減少）
+  useSignalQualityFilter: true,
+  signalQualityWindow: 20,    // 直近N日のシグナル正解率を追跡
+  signalQualityThreshold: 0.48 // これ以下ならbullでポジション縮小
 };
 
 /**
@@ -169,6 +173,11 @@ function runBacktestWithMarketRegime(
   const stopCooldownDays = Math.max(0, params.stopCooldownDays ?? BACKTEST_CONFIG.stopCooldownDays ?? 1);
   let stopCooldownRemaining = 0;
 
+  // シグナル品質追跡（bull期間の動的ポジション調整用）
+  const signalQualityWindow = params.signalQualityWindow ?? 20;
+  const signalQualityThreshold = params.signalQualityThreshold ?? 0.48;
+  const signalAccHistory = []; // 0 or 1: シグナルの方向正解履歴
+
   const signalGen = new LeadLagSignal({
     lambdaReg: params.lambdaReg,
     nFactors: params.nFactors,
@@ -206,7 +215,15 @@ function runBacktestWithMarketRegime(
     // 市場環境判定
     const priceSlice = usPrices.slice(0, i + 1);
     const marketRegime = determineMarketRegime(priceSlice, params.marketRegime);
-    const positionSize = marketRegime.positionSize;
+    let positionSize = marketRegime.positionSize;
+
+    // bull期間のシグナル品質フィルター（lookaheadなし：追跡履歴は前日までの実績）
+    if (params.useSignalQualityFilter && marketRegime.regime === MarketRegime.BULL && signalAccHistory.length >= 10) {
+      const currentQuality = signalAccHistory.reduce((a, b) => a + b, 0) / signalAccHistory.length;
+      if (currentQuality < signalQualityThreshold) {
+        positionSize = positionSize * Math.max(0, currentQuality / signalQualityThreshold);
+      }
+    }
 
     // ウィンドウデータ
     const windowStart = i - windowLength;
@@ -284,6 +301,20 @@ function runBacktestWithMarketRegime(
       positionSize,
       regimeMessage: marketRegime.message
     });
+
+    // シグナル正解率記録（次ステップの品質判定に使用）
+    if (weights.some(w => w > 0) && weights.some(w => w < 0)) {
+      let longRet = 0, longCnt = 0, shortRet = 0, shortCnt = 0;
+      for (let j = 0; j < weights.length; j++) {
+        if (weights[j] > 0) { longRet += retOc[j]; longCnt++; }
+        else if (weights[j] < 0) { shortRet += retOc[j]; shortCnt++; }
+      }
+      const correct = (longCnt > 0 && shortCnt > 0)
+        ? ((longRet / longCnt) > (shortRet / shortCnt) ? 1 : 0)
+        : 0;
+      signalAccHistory.push(correct);
+      if (signalAccHistory.length > signalQualityWindow) signalAccHistory.shift();
+    }
 
     // 市場環境別統計
     regimeStats[marketRegime.regime].days++;
