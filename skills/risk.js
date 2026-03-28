@@ -21,6 +21,14 @@ const {
   calculateHedgedPerformance,
   DEFAULT_CONFIG: HEDGE_CONFIG
 } = require('../lib/portfolio/fx-hedge');
+const {
+  calculateMomentum,
+  calculateQuality,
+  calculateValue,
+  calculateVolatilityFactor,
+  combineFactors,
+  DEFAULT_CONFIG: FACTOR_CONFIG
+} = require('../lib/portfolio/multi-factor');
 
 module.exports = createSkill({
   name: 'risk',
