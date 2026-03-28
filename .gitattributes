@@ -1,0 +1,2 @@
+# Keep line endings consistent (CI/Linux expects LF; avoids ESLint linebreak-style noise on Windows)
+* text=auto eol=lf
