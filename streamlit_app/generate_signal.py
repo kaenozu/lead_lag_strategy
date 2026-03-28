@@ -8,24 +8,66 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
+import requests
 
+# yfinance の使用を試みる（なければ requests で直接取得）
 try:
     import yfinance as yf
+    USE_YFINANCE = True
 except ImportError:
-    yf = None
+    USE_YFINANCE = False
+    print("ℹ️ yfinance がないため、requests で直接データ取得します")
 
 
 def fetch_etf_data(tickers: list[str], period: str = "1y") -> dict[str, pd.DataFrame]:
     """ETF データを取得"""
     data = {}
-    for ticker in tickers:
-        try:
-            if yf:
+    
+    if USE_YFINANCE:
+        # yfinance を使用
+        for ticker in tickers:
+            try:
                 df = yf.download(ticker, period=period, progress=False)
                 if len(df) > 0:
                     data[ticker] = df
-        except Exception as e:
-            print(f"Error fetching {ticker}: {e}")
+            except Exception as e:
+                print(f"Error fetching {ticker}: {e}")
+    else:
+        # requests で直接 Yahoo Finance から取得
+        period_map = {"1y": 365, "6mo": 180, "3mo": 90}
+        days = period_map.get(period, 365)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        for ticker in tickers:
+            try:
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                params = {
+                    "period1": int(start_date.timestamp()),
+                    "period2": int(end_date.timestamp()),
+                    "interval": "1d"
+                }
+                response = requests.get(url, params=params, timeout=10)
+                response.raise_for_status()
+                result = response.json()
+                
+                if result.get("chart", {}).get("result"):
+                    chart_data = result["chart"]["result"][0]
+                    timestamps = chart_data["timestamp"]
+                    quotes = chart_data["indicators"]["quote"][0]
+                    
+                    df = pd.DataFrame({
+                        "Date": pd.to_datetime(timestamps, unit="s"),
+                        "Close": quotes["close"]
+                    })
+                    df = df.set_index("Date")
+                    df = df.dropna()
+                    
+                    if len(df) > 0:
+                        data[ticker] = df
+            except Exception as e:
+                print(f"Error fetching {ticker} via requests: {e}")
+    
     return data
 
 
@@ -111,14 +153,13 @@ def generate_signal() -> dict:
     
     # データ取得
     all_tickers = US_ETF_TICKERS + JP_ETF_TICKERS
-    
-    if yf:
+
+    if USE_YFINANCE:
         data = fetch_etf_data(all_tickers, period="1y")
     else:
-        # yfinance がない場合はダミーデータ
-        print("⚠️ yfinance がインストールされていません。ダミーデータを生成します。")
-        data = {ticker: pd.DataFrame({'Close': np.random.randn(252).cumsum() + 100}) 
-                for ticker in all_tickers}
+        # requests で直接取得
+        print("📡 requests でデータ取得中...")
+        data = fetch_etf_data(all_tickers, period="1y")
     
     if not data:
         return {"error": "データ取得に失敗しました"}

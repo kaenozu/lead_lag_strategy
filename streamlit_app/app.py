@@ -14,14 +14,18 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from _paths import repo_root, results_dir
-
 # Python 版シグナル生成をインポート（Streamlit Cloud 用）
+# _paths よりも先にインポート（generate_signal は _paths に依存しない）
 try:
     from generate_signal import generate_signal
     PYTHON_SIGNAL_AVAILABLE = True
-except ImportError:
+    IMPORT_ERROR_MESSAGE = ''
+except Exception as e:
     PYTHON_SIGNAL_AVAILABLE = False
+    import traceback
+    IMPORT_ERROR_MESSAGE = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
+
+from _paths import repo_root, results_dir
 
 st.set_page_config(
     page_title="日米リードラグ戦略",
@@ -90,7 +94,32 @@ def main() -> None:
         st.caption(f"results: `{res}`")
         st.divider()
         st.subheader("アクション")
-        if st.button("🔄 シグナル再生成", help="npm run signal（ネットワーク利用）"):
+        
+        # Python 版シグナル生成（Streamlit Cloud 用）
+        if PYTHON_SIGNAL_AVAILABLE:
+            if st.button("🔄 シグナル生成（Python 版）", help="Python でシグナル生成（Streamlit Cloud 推奨）"):
+                with st.spinner("シグナル生成中..."):
+                    try:
+                        result = generate_signal()
+                        if 'error' not in result:
+                            # 結果を保存
+                            output_path = res / "signal.json"
+                            with open(output_path, 'w', encoding='utf-8') as f:
+                                json.dump(result, f, indent=2, ensure_ascii=False)
+                            st.success("シグナル生成完了")
+                            st.rerun()
+                        else:
+                            st.error(f"エラー：{result.get('error')}")
+                    except Exception as e:
+                        st.error(f"エラー：{str(e)}")
+        else:
+            # エラーメッセージを表示
+            st.error("⚠️ Python 版が利用できません")
+            with st.expander("エラー詳細"):
+                st.code(f"{IMPORT_ERROR_MESSAGE}", language="text")
+            st.caption("※ yfinance のインストールに失敗しています。時間をおいて再読み込みしてください。")
+        
+        if st.button("🔄 シグナル再生成", help="npm run signal（Node.js 環境用）"):
             with st.spinner("npm run signal 実行中..."):
                 code, text = _run_npm_script("signal")
             if code == 0:
@@ -98,7 +127,7 @@ def main() -> None:
             else:
                 st.error(f"終了コード {code}")
             with st.expander("ログ"):
-                st.code(text[:12000] or "(empty)", language="text")
+                st.code(text[:12000] or "(出力なし)", language="text")
 
     st.title("日米業種リードラグ戦略")
     st.warning(
