@@ -302,6 +302,9 @@ async function main() {
     quantile: config.backtest.quantile,
     warmupPeriod: config.backtest.windowLength,
     transactionCosts: config.backtest.transactionCosts,
+    // Eigen decomposition stability knobs (backtest only; keeps library defaults unchanged elsewhere)
+    eigenTol: 1e-6,
+    eigenMaxIter: 1500,
     orderedSectorKeys: config.pca.orderedSectorKeys,
     signalStability: {
       smoothingAlpha: config.backtest.smoothingAlpha,
