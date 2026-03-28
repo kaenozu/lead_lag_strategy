@@ -36,7 +36,17 @@
     "lint:fix": "eslint . --fix",
     "test:e2e": "playwright test",
     "test:e2e:monkey": "playwright test e2e/ui-monkey.spec.js",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "skill:list": "node skills/index.js list",
+    "skill:run": "node skills/index.js run",
+    "skill:info": "node skills/index.js info",
+    "skill:backtest": "node skills/index.js run backtest",
+    "skill:signal": "node skills/index.js run signal",
+    "skill:risk": "node skills/index.js run risk",
+    "skill:performance": "node skills/index.js run performance",
+    "skill:validate": "node skills/index.js run validate",
+    "skill:report": "node skills/index.js run report",
+    "skill:full": "node skills/index.js run all"
   },
   "keywords": [
     "trading",

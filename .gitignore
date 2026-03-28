@@ -37,9 +37,8 @@ pro/
 *.swp
 *.swo
 
-# ビルド成果物
-dist/
-build/
+# Claude Code
+.claude/hooks/audit.log
 
 # テストカバレッジ
 coverage/
