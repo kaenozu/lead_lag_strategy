@@ -227,28 +227,6 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   return { returns: strategyReturns, dates };
 }
 
-function averageMomentumWindow(returnsJp, start, end, nJp) {
-  const momentum = new Array(nJp).fill(0);
-  const window = end - start;
-  for (let j = start; j < end; j++) {
-    for (let k = 0; k < nJp; k++) {
-      momentum[k] += returnsJp[j].values[k];
-    }
-  }
-  for (let k = 0; k < nJp; k++) {
-    momentum[k] /= window;
-  }
-  return momentum;
-}
-
-function weightedReturn(weights, returns) {
-  let result = 0;
-  for (let i = 0; i < weights.length; i++) {
-    result += weights[i] * returns[i];
-  }
-  return result;
-}
-
 // ============================================================================
 // メイン処理
 // ============================================================================
