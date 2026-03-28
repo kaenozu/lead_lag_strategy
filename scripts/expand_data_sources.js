@@ -117,8 +117,7 @@ async function main() {
   
   for (let i = 0; i < TOPIX_SECTOR_ETF_TICKERS.length; i++) {
     const ticker = TOPIX_SECTOR_ETF_TICKERS[i];
-    const name = TOPIX_SECTOR_NAMES[i];
-    
+
     const data = await fetchFromYahoo(ticker);
     
     if (data.length > 0) {
