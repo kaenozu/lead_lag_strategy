@@ -95,7 +95,7 @@ describe('lib/pca', () => {
     });
 
     test('computeSignalでシグナル計算', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3, windowLength: 5 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],

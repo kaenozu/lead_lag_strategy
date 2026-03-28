@@ -161,7 +161,8 @@ function createApp() {
   app.use(cors({
     origin(origin, callback) {
       if (!origin) {
-        if (config.server.isDevelopment) {
+        // Supertest and CLI clients omit Origin; only enforce in production.
+        if (process.env.NODE_ENV !== 'production') {
           return callback(null, true);
         }
         logger.warn('CORS blocked request with no Origin (not allowed in production)');

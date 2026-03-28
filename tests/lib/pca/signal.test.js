@@ -45,7 +45,7 @@ describe('lib/pca/signal', () => {
     ];
 
     test('基本計算', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3, windowLength: 5 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],
@@ -127,7 +127,7 @@ describe('lib/pca/signal', () => {
     });
 
     test('異なるセクター数', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3, windowLength: 3 });
 
       const returnsUs = [
         [0.01, 0.02],
@@ -156,7 +156,7 @@ describe('lib/pca/signal', () => {
     });
 
     test('シグナルが数値を返す', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3, windowLength: 2 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],
@@ -179,7 +179,7 @@ describe('lib/pca/signal', () => {
     });
 
     test('2つのサンプルで計算', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.9, nFactors: 3, windowLength: 2 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],
@@ -221,7 +221,7 @@ describe('lib/pca/signal', () => {
     });
 
     test('カスタムlambdaReg', () => {
-      const signal = new LeadLagSignal({ lambdaReg: 0.5, nFactors: 2 });
+      const signal = new LeadLagSignal({ lambdaReg: 0.5, nFactors: 2, windowLength: 2 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],
@@ -241,7 +241,7 @@ describe('lib/pca/signal', () => {
     });
 
     test('異なるnFactors', () => {
-      const signal = new LeadLagSignal({ nFactors: 2 });
+      const signal = new LeadLagSignal({ nFactors: 2, windowLength: 2 });
 
       const returnsUs = [
         [0.01, 0.02, 0.015],
