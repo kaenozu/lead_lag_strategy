@@ -11,11 +11,12 @@ from datetime import datetime, timedelta
 import requests
 
 # yfinance の使用を試みる（なければ requests で直接取得）
+USE_YFINANCE = False
 try:
     import yfinance as yf
     USE_YFINANCE = True
+    print("✅ yfinance を使用します")
 except ImportError:
-    USE_YFINANCE = False
     print("ℹ️ yfinance がないため、requests で直接データ取得します")
 
 
@@ -185,10 +186,14 @@ def generate_signal() -> dict:
     results = []
     for i, ticker in enumerate(returns_dict.keys()):
         if ticker in JP_ETF_TICKERS:
+            # numpy 配列を Python スカラーに変換
+            signal_val = signals[i]
+            if hasattr(signal_val, 'item'):
+                signal_val = signal_val.item()
             results.append({
                 'ticker': ticker,
                 'sector': SECTOR_LABELS.get(ticker, 'Unknown'),
-                'signal': float(signals[i]),
+                'signal': float(signal_val),
                 'region': 'JP'
             })
     
