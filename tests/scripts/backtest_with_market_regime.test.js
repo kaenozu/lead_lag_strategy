@@ -33,13 +33,16 @@ jest.mock('../../lib/portfolio', () => ({
   }))
 }));
 
+const { DEFAULT_VOL_EXPOSURE } = require('../../lib/riskExposure');
 const {
-  runBacktestWithMarketRegime
+  runBacktestWithMarketRegime,
+  computeUnifiedWarmup,
+  BACKTEST_CONFIG
 } = require('../../scripts/backtest_with_market_regime');
 
 describe('scripts/backtest_with_market_regime', () => {
   test('warmup 修正後は十分な長さで実行ループが 0 件にならない', () => {
-    const length = 220;
+    const length = 260;
     const nJp = JP_ETF_TICKERS.length;
 
     const returnsUs = Array.from({ length }, (_, i) => ({
@@ -71,6 +74,15 @@ describe('scripts/backtest_with_market_regime', () => {
       }
     };
 
+    const windowLength = 60;
+    const volLb = DEFAULT_VOL_EXPOSURE.lookback;
+    const expectedWarmup = Math.max(
+      windowLength,
+      params.marketRegime.lookback,
+      params.sectorLookback,
+      volLb + 2
+    );
+
     const result = runBacktestWithMarketRegime(
       returnsUs,
       returnsJpOc,
@@ -80,7 +92,7 @@ describe('scripts/backtest_with_market_regime', () => {
     );
 
     expect(result.returns.length).toBeGreaterThan(0);
-    expect(result.returns.length).toBe(length - 200);
+    expect(result.returns.length).toBe(length - expectedWarmup);
   });
 
   test('dailyLossStop 発動後も恒久停止せず再開する', () => {
@@ -138,5 +150,15 @@ describe('scripts/backtest_with_market_regime', () => {
 
     const remaining = returns.slice(firstStopIdx + 2);
     expect(remaining.some(r => r !== 0)).toBe(true);
+  });
+
+  test('computeUnifiedWarmup は window・レジーム・セクター・ボラ窓の最大を返す', () => {
+    const w = computeUnifiedWarmup(60, BACKTEST_CONFIG);
+    expect(w).toBe(Math.max(
+      60,
+      BACKTEST_CONFIG.marketRegime.lookback,
+      BACKTEST_CONFIG.sectorLookback,
+      BACKTEST_CONFIG.volExposure.lookback + 2
+    ));
   });
 });

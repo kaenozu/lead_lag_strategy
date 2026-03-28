@@ -14,6 +14,11 @@ const { buildPaperAlignedReturnRows } = require('../lib/data');
 const { config: appConfig } = require('../lib/config');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 const { computeCFull } = require('./common');
+const {
+  annualizedVolFromPrices,
+  volatilityExposureScale,
+  DEFAULT_VOL_EXPOSURE
+} = require('../lib/riskExposure');
 
 // ============================================================================
 // 設定（リスク管理強化）
@@ -33,7 +38,17 @@ const RISK_CONFIG = {
   maxTotalExposure: 1.50,     // 最大エクスポージャー（150%）
   volatilityTarget: 0.08,     // 目標ボラティリティ（8%）
   maxDrawdownLimit: 0.15,     // 最大ドローダウン（15%）
-  stopLoss: 0.05             // ストップロス（5%）
+  stopLoss: 0.05,             // ストップロス（5%）
+  /** 米国セクター平均から合成した価格系列の高ボラ縮小 */
+  usVolExposure: {
+    ...DEFAULT_VOL_EXPOSURE,
+    enabled: true,
+    lookback: 20,
+    refAnnualVol: 0.12,
+    capAnnualVol: 0.30,
+    minScale: 0.45,
+    maxScale: 1.0
+  }
 };
 
 // 取引コスト
@@ -87,6 +102,17 @@ function buildPortfolio(signal, quantile = 0.4, riskConfig = null, currentVolati
   }
 
   return weights;
+}
+
+function buildUSPriceSeriesFromReturnRows(returnsUs) {
+  const prices = [];
+  let cumulative = 100;
+  for (const row of returnsUs) {
+    const avgRet = row.values.reduce((a, b) => a + b, 0) / row.values.length;
+    cumulative *= (1 + avgRet);
+    prices.push(cumulative);
+  }
+  return prices;
 }
 
 // ============================================================================
@@ -195,6 +221,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
   const volWindow = 20;
   const recentReturns = [];
   let prevWeights = null;
+  const usPrices = buildUSPriceSeriesFromReturnRows(retUs);
 
   for (let i = config.warmupPeriod; i < retJpOc.length; i++) {
     const start = i - config.windowLength;
@@ -213,6 +240,13 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
 
     // ポートフォリオ構築（リスク管理付き）
     const weights = riskConfig ? buildPortfolio(signal, config.quantile, riskConfig, rollingVolatility) : buildPortfolio(signal, config.quantile);
+
+    if (riskConfig && riskConfig.usVolExposure && riskConfig.usVolExposure.enabled) {
+      const uv = riskConfig.usVolExposure;
+      const annVol = annualizedVolFromPrices(usPrices.slice(0, i + 1), uv.lookback);
+      const { scale } = volatilityExposureScale(annVol, uv);
+      for (let j = 0; j < nJp; j++) weights[j] *= scale;
+    }
 
     // ドローダウン制御
     if (riskConfig && currentDrawdown < -riskConfig.maxDrawdownLimit * 0.5) {
