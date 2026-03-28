@@ -54,22 +54,34 @@ function buildReturnMatrices(usData, jpData) {
 
   const sortedDates = Array.from(allDates).sort();
 
-  for (const date of sortedDates) {
+  // 高速化：事前 Map 構築（O(n) → O(1) 検索）
+  const usDataMap = new Map();
+  const jpDataMap = new Map();
+  for (const [ticker, data] of Object.entries(usData)) {
+    usDataMap.set(ticker, new Map(data.map(d => [d.date, d])));
+  }
+  for (const [ticker, data] of Object.entries(jpData)) {
+    jpDataMap.set(ticker, new Map(data.map(d => [d.date, d])));
+  }
+
+  for (let i = 0; i < sortedDates.length; i++) {
+    const date = sortedDates[i];
+    const prevDate = i > 0 ? sortedDates[i - 1] : null;
     const usReturns = [];
     const jpCcReturns = [];
     const jpOcReturns = [];
 
     for (const ticker of US_ETF_TICKERS) {
-      const prev = usData[ticker]?.find(r => r.date < date);
-      const curr = usData[ticker]?.find(r => r.date === date);
+      const prev = prevDate ? usDataMap.get(ticker)?.get(prevDate) : null;
+      const curr = usDataMap.get(ticker)?.get(date);
       if (prev && curr) {
         usReturns.push((curr.close - prev.close) / prev.close);
       }
     }
 
     for (const ticker of JP_ETF_TICKERS) {
-      const prevClose = jpData[ticker]?.find(r => r.date < date);
-      const curr = jpData[ticker]?.find(r => r.date === date);
+      const prevClose = prevDate ? jpDataMap.get(ticker)?.get(prevDate) : null;
+      const curr = jpDataMap.get(ticker)?.get(date);
       if (prevClose && curr) {
         // CC リターン（前日終値から当日終値）- シグナル計算用
         jpCcReturns.push((curr.close - prevClose.close) / prevClose.close);
@@ -78,7 +90,7 @@ function buildReturnMatrices(usData, jpData) {
       }
     }
 
-    if (usReturns.length === US_ETF_TICKERS.length && 
+    if (usReturns.length === US_ETF_TICKERS.length &&
         jpCcReturns.length === JP_ETF_TICKERS.length) {
       dates.push(date);
       retUs.push({ date, values: usReturns });
