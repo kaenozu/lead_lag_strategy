@@ -112,7 +112,7 @@ function deepDiveAnalysis() {
           MDD: metrics.MDD * 100,
           Cumulative: (metrics.Cumulative - 1) * 100
         });
-      } catch (e) {
+      } catch {
         gridResults.push({
           lambda,
           quantile,
@@ -208,7 +208,7 @@ function deepDiveAnalysis() {
   console.log(`ボラティリティ閾値：低<${(volLowThreshold*100).toFixed(2)}%, 中<${(volHighThreshold*100).toFixed(2)}%, 高`);
   console.log('-'.repeat(60));
   
-  for (const [key, regime] of Object.entries(regimes)) {
+  for (const [, regime] of Object.entries(regimes)) {
     const allReturns = regime.returns.flat();
     const avgRet = allReturns.reduce((a, b) => a + b, 0) / allReturns.length * 252 * 100;
     const stdRet = Math.sqrt(allReturns.reduce((a, b) => a + Math.pow(b - allReturns.reduce((x, y) => x + y, 0) / allReturns.length, 2), 0) / allReturns.length) * Math.sqrt(252) * 100;
@@ -274,7 +274,7 @@ function deepDiveAnalysis() {
         if (contrib > 0) sectorContribution[sector].positive++;
         else if (contrib < 0) sectorContribution[sector].negative++;
       }
-    } catch (e) {
+    } catch {
       // エラーは無視
     }
   }
@@ -319,7 +319,7 @@ function deepDiveAnalysis() {
   const returns = results.returns;
 
   // 損失日の分類
-  const lossDays = returns.filter(r => r.return < -0.003);
+  const _lossDays = returns.filter(r => r.return < -0.003);
   const bigLossDays = returns.filter(r => r.return < -0.01);
   const smallLossDays = returns.filter(r => r.return >= -0.01 && r.return < -0.003);
 

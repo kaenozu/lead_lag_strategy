@@ -25,8 +25,7 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS, JP_ETF_NAMES } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const {
-  computePerformanceMetrics,
-  applyTransactionCosts
+  computePerformanceMetrics
 } = require('../lib/portfolio');
 const {
   calculateVolatility,

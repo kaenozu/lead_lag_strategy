@@ -49,6 +49,7 @@
 | 0b | 初回・設定変更後（データ確認付きバックテストまで） | `npm run workflow:full` |
 | 1 | 環境とデータ置き場の確認 | `npm run doctor` |
 | 2 | 依存関係のインストール | `npm install` |
+| 2b | （Windows）改行を CI と揃える | 推奨: `git config core.autocrlf false`（リポジトリは `.gitattributes` で LF を優先） |
 | 3 | （任意）`.env` を用意 | `cp .env.example .env` |
 | 4 | **本番相当のバックテスト 1 本**（論文デフォルト寄りの設定は `lib/config.js` / `.env`） | `npm run backtest` → [backtest/real.js](backtest/real.js) |
 | 5 | **実弾前の必須ステップ**：ペーパーで挙動確認 | `npm run paper`（[scripts/paper_trading.js](scripts/paper_trading.js)） |

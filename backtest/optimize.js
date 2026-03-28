@@ -17,7 +17,7 @@ const {
   computeCFull
 } = require('./common');
 const { fetchOhlcvDateRangeForTickers } = require('../lib/data');
-const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
+const { weightedReturn } = require('../lib/backtestUtils');
 
 // ============================================================================
 // グリッド定義

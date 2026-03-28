@@ -29,9 +29,9 @@ function postToolUse(context) {
           timeout: 10000
         });
         console.log(`✅ Auto-fixed: ${filePath}`);
-      } catch (e) {
+      } catch (err) {
         // ESLint might fail, just log
-        console.warn(`⚠️ ESLint warning for ${filePath}: ${e.message}`);
+        console.warn(`⚠️ ESLint warning for ${filePath}: ${err.message}`);
       }
     }
   }
@@ -78,7 +78,7 @@ function postToolUse(context) {
           timeout: 60000
         });
         console.log('✅ Tests passed');
-      } catch (e) {
+      } catch {
         console.warn('⚠️ Tests failed - review required');
       }
     }

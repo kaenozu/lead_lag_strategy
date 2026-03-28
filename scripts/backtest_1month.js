@@ -4,15 +4,13 @@
 
 'use strict';
 
-const { runBacktest, printStrategySummary } = require('../backtest/real');
+const { runBacktest } = require('../backtest/real');
 const {
   fetchOhlcvDateRangeForTickers,
   buildReturnMatricesFromOhlcv,
-  computeCFull,
-  writeStrategyOutputs
+  computeCFull
 } = require('../lib/data');
 const { config: defaultConfig } = require('../lib/config');
-const { LeadLagSignal } = require('../lib/pca');
 const { computePerformanceMetrics } = require('../lib/portfolio');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
 

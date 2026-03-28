@@ -10,7 +10,7 @@ const path = require('path');
 const { config } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const { correlationMatrixSample } = require('../lib/math');
-const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
+const { computePerformanceMetrics } = require('../lib/portfolio');
 
 const US_ETF_TICKERS = ['XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'];
 const JP_ETF_TICKERS = ['1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T', '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T', '1631.T', '1632.T', '1633.T'];
@@ -28,7 +28,7 @@ function loadLocalData(dataDir, tickers) {
       const content = fs.readFileSync(filePath, 'utf-8');
       const lines = content.split('\n').slice(1).filter(l => l.trim());
       results[ticker] = lines.map(line => {
-        const [date, open, high, low, close] = line.split(',');
+        const [date, open, , , close] = line.split(',');
         return { date, open: parseFloat(open), close: parseFloat(close) };
       });
     } else {
@@ -110,7 +110,7 @@ function pcaSignal(retUsWindow, retJpWindow, retUsLatest, sectorLabels, CFull, p
 }
 
 // 平均回帰シグナル
-function meanReversionSignal(retJpWindow, lookback = 20) {
+function meanReversionSignal(retJpWindow, _lookback = 20) {
   const n = retJpWindow[0].length;
   const mean = new Array(n).fill(0);
   const std = new Array(n).fill(0);

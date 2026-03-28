@@ -41,26 +41,6 @@ function loadLocalData(dataDir, tickers) {
   return results;
 }
 
-function buildPortfolio(signal, quantile) {
-  const n = signal.length;
-  const sortedIndices = signal
-    .map((v, i) => ({ value: v, index: i }))
-    .sort((a, b) => b.value - a.value);
-
-  const weights = new Array(n).fill(0);
-  const longCount = Math.floor(n * quantile);
-  const shortCount = Math.floor(n * quantile);
-
-  for (let i = 0; i < longCount; i++) {
-    weights[sortedIndices[i].index] = 1.0 / longCount;
-  }
-  for (let i = 0; i < shortCount; i++) {
-    weights[sortedIndices[n - 1 - i].index] = -1.0 / shortCount;
-  }
-
-  return weights;
-}
-
 function strategyEnhancement() {
   console.log('='.repeat(80));
   console.log('戦略強化分析');
