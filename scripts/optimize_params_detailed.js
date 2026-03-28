@@ -115,8 +115,8 @@ function optimizeParams(retUs, retJp, retJpOc, labels, CFull) {
                     console.log(`  [${count}/${total}] 新記録：λ=${cfg.lambdaReg}, window=${cfg.windowLength}, q=${cfg.quantile}, factors=${cfg.nFactors}`);
                     console.log(`           => AR=${metrics.AR.toFixed(2)}%, R/R=${metrics.RR.toFixed(2)}, MDD=${metrics.MDD.toFixed(1)}%`);
                 }
-            } catch (e) {
-                // エラーは無視
+            } catch (error) {
+                console.warn(`  ⚠️  パラメータ組み合わせでエラー：${JSON.stringify(cfg)} - ${error.message}`);
             }
             return;
         }
