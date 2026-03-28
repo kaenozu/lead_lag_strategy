@@ -20,9 +20,10 @@ try:
     from generate_signal import generate_signal
     PYTHON_SIGNAL_AVAILABLE = True
     IMPORT_ERROR_MESSAGE = ''
-except ImportError as e:
+except Exception as e:
     PYTHON_SIGNAL_AVAILABLE = False
-    IMPORT_ERROR_MESSAGE = str(e)
+    import traceback
+    IMPORT_ERROR_MESSAGE = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
 
 from _paths import repo_root, results_dir
 
