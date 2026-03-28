@@ -4,7 +4,7 @@
  * Generates trading reports and summaries
  */
 
-const { createSkill, saveResult } = require('./skill-base');
+const { createSkill } = require('./skill-base');
 const fs = require('fs');
 const path = require('path');
 
@@ -173,7 +173,7 @@ function convertToMarkdown(report) {
   
   md += '---\n\n';
   
-  for (const [key, section] of Object.entries(report.sections)) {
+  for (const [, section] of Object.entries(report.sections)) {
     md += `## ${section.title}\n\n`;
     
     if (section.content) {

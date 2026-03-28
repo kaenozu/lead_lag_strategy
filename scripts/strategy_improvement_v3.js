@@ -27,7 +27,7 @@ function loadLocalData(dataDir, tickers) {
       const content = fs.readFileSync(filePath, 'utf-8');
       const lines = content.split('\n').slice(1).filter(l => l.trim());
       results[ticker] = lines.map(line => {
-        const [date, open, high, low, close] = line.split(',');
+        const [date, open, , , close] = line.split(',');
         return { date, open: parseFloat(open), close: parseFloat(close) };
       });
     } else {

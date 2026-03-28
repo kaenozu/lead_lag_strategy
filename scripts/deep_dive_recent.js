@@ -118,7 +118,7 @@ function recentDeepDive() {
           MDD: metrics.MDD * 100,
           Cumulative: (metrics.Cumulative - 1) * 100
         });
-      } catch (e) {
+      } catch {
         gridResults.push({
           lambda,
           quantile,

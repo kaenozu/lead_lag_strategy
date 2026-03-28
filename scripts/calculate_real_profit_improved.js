@@ -105,7 +105,7 @@ async function main() {
 
   // 過去 1 ヶ月の営業日を特定
   const endDate = retUs.length - 1;
-  const startDate = Math.max(0, endDate - 30);
+  const _startDate = Math.max(0, endDate - 30);
   const warmupPeriod = config.backtest.windowLength + IMPROVED_PARAMS.sectorLookback;
 
   // セクターパフォーマンス計算

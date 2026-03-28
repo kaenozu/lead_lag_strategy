@@ -308,9 +308,9 @@ async function main() {
   console.log('-'.repeat(80));
   
   longPerformance.forEach(s => {
-    const sectorName = s.sector || 'neutral';
+    const _sectorName = s.sector || 'neutral';
     console.log(
-      `${s.ticker.padEnd(8)} ${s.name.padEnd(12)} ${String(s.longCount).padStart(6)}回  ` +
+      `${s.ticker.padEnd(8)} ${(s.name || _sectorName).padEnd(12)} ${String(s.longCount).padStart(6)}回  ` +
       `${(s.avgReturnWhenLong * 100).toFixed(2).padStart(8)}  ${(s.winRateWhenLong * 100).toFixed(1).padStart(6)}`
     );
   });
@@ -327,11 +327,11 @@ async function main() {
   console.log('-'.repeat(80));
   
   shortPerformance.forEach(s => {
-    const sectorName = s.sector || 'neutral';
+    const _sectorName = s.sector || 'neutral';
     // ショートなので、リターンが負なら勝ち
     const winRate = s.shortCount > 0 ? (s.shortWins / s.shortCount * 100) : 0;
     console.log(
-      `${s.ticker.padEnd(8)} ${s.name.padEnd(12)} ${String(s.shortCount).padStart(6)}回  ` +
+      `${s.ticker.padEnd(8)} ${(s.name || _sectorName).padEnd(12)} ${String(s.shortCount).padStart(6)}回  ` +
       `${(s.avgReturnWhenShort * 100).toFixed(2).padStart(8)}  ${winRate.toFixed(1).padStart(6)}`
     );
   });
@@ -393,7 +393,7 @@ async function main() {
   const countByRank = new Array(18).fill(0);
   
   dailyAnalysis.forEach(d => {
-    d.signals.forEach((s, idx) => {
+    d.signals.forEach((s, _idx) => {
       const rank = s.signalRank;
       if (rank <= 17) {
         avgActualReturnByRank[rank] += s.actualReturn;

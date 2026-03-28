@@ -73,7 +73,7 @@ function preToolUse(context) {
   const auditLogPath = path.join(process.cwd(), '.claude', 'audit.log');
   try {
     fs.appendFileSync(auditLogPath, JSON.stringify(logEntry) + '\n');
-  } catch (e) {
+  } catch {
     // Silent fail for logging
   }
   

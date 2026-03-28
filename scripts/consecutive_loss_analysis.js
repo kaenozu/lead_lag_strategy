@@ -99,7 +99,6 @@ function consecutiveLossAnalysis() {
   // 閾値：2-7 日、削減率：25%-100%
   for (let threshold = 2; threshold <= 7; threshold++) {
     for (let reduction = 0.25; reduction <= 1.0; reduction += 0.25) {
-      let cumulative = 1;
       let consecutiveLoss = 0;
       let positionSize = 1.0;
       const returns = [];
@@ -119,7 +118,6 @@ function consecutiveLossAnalysis() {
         
         const adjReturn = r.return * positionSize;
         returns.push(adjReturn);
-        cumulative *= (1 + adjReturn);
       }
       
       const metrics = computePerformanceMetrics(returns);

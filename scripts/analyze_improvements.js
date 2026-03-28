@@ -397,7 +397,7 @@ function analyzeStrategy() {
   console.log('='.repeat(70));
   
   const bestMetrics = optimalMetrics.AR > baseMetrics.AR ? optimalMetrics : baseMetrics;
-  const bestConfig = optimalMetrics.AR > baseMetrics.AR ? optimalConfig : baseConfig;
+  const _bestConfig = optimalMetrics.AR > baseMetrics.AR ? optimalConfig : baseConfig;
   const bestName = optimalMetrics.AR > baseMetrics.AR ? '最適化版' : '現在版';
   
   console.log(`\n推奨：${bestName}`);

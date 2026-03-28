@@ -6,7 +6,6 @@
 
 const { createSkill } = require('./skill-base');
 const { runBacktest } = require('../backtest/real');
-const { config } = require('../lib/config');
 
 module.exports = createSkill({
   name: 'performance',

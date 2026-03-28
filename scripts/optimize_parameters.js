@@ -20,9 +20,7 @@ const {
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 const { createLogger } = require('../lib/logger');
 const {
-  buildPortfolio,
-  computePerformanceMetrics,
-  applyTransactionCosts
+  computePerformanceMetrics
 } = require('../lib/portfolio');
 
 const logger = createLogger('ParameterOptimizer');
@@ -72,7 +70,6 @@ function runBacktestWithParams(
   sectorLabels,
   CFull
 ) {
-  const nJp = returnsJpOc[0].values.length;
   const strategyReturns = [];
   const dates = [];
   let prevWeights = null;

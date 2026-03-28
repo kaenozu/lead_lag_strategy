@@ -162,7 +162,7 @@ function run1MonthBacktest() {
 
 // 実行
 try {
-  const results = run1MonthBacktest();
+  const _results = run1MonthBacktest();
   console.log('\nバックテスト完了');
   process.exit(0);
 } catch (err) {

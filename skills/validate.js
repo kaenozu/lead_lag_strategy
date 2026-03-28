@@ -248,7 +248,7 @@ function validateTickerData(ticker, data, config) {
 /**
  * Check correlation matrix for issues
  */
-function checkCorrelations(fetchResult, usTickers, jpTickers, config) {
+function checkCorrelations(_fetchResult, _usTickers, _jpTickers, _config) {
   const anomalies = [];
   
   // Simple correlation check placeholder

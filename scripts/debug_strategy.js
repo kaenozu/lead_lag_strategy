@@ -9,8 +9,6 @@ const fs = require('fs');
 const path = require('path');
 const { computePerformanceMetrics } = require('../lib/portfolio');
 
-const JP_ETF_TICKERS = ['1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T', '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T', '1631.T', '1632.T', '1633.T'];
-
 console.log('データ検証...');
 
 const dataDir = path.join(__dirname, '..', 'backtest', 'data');
@@ -25,13 +23,13 @@ console.log(`  行数：${lines.length}`);
 console.log('  最初の 5 行:');
 
 for (let i = 0; i < 5; i++) {
-  const [date, open, high, low, close] = lines[i].split(',');
+  const [date, open, , , close] = lines[i].split(',');
   console.log(`    ${date}: O=${open}, C=${close}`);
 }
 
 console.log('\n  最後の 5 行:');
 for (let i = lines.length - 5; i < lines.length; i++) {
-  const [date, open, high, low, close] = lines[i].split(',');
+  const [date, open, , , close] = lines[i].split(',');
   console.log(`    ${date}: O=${open}, C=${close}`);
 }
 

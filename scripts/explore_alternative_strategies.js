@@ -7,7 +7,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { config } = require('../lib/config');
 const { computePerformanceMetrics } = require('../lib/portfolio');
 
 const US_ETF_TICKERS = ['XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'];
@@ -353,7 +352,7 @@ async function main() {
   const jpData = loadLocalData(dataDir, JP_ETF_TICKERS);
   
   console.log('リターン行列構築中...');
-  const { retUs, retJpCC, retJpOc, dates } = buildReturnMatrices(usData, jpData);
+  const { retJpCC, retJpOc, dates } = buildReturnMatrices(usData, jpData);
   console.log(`  取引日数：${dates.length}日 (${dates[0]} ~ ${dates[dates.length - 1]})`);
   
   console.log('\n戦略バックテスト中...');

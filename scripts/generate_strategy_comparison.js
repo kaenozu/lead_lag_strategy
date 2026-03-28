@@ -15,10 +15,6 @@ console.log('='.repeat(80));
 // 各戦略の結果を読み込み
 const resultsDir = path.join(__dirname, '..', 'results');
 
-// PCA 戦略の結果（最適化最終レポートから）
-const pcaReportPath = path.join(resultsDir, 'optimization_final_report.json');
-const pcaReport = fs.existsSync(pcaReportPath) ? JSON.parse(fs.readFileSync(pcaReportPath, 'utf-8')) : null;
-
 // 代替戦略の結果
 const altReportPath = path.join(resultsDir, 'alternative_strategies_comparison.json');
 const altReport = fs.existsSync(altReportPath) ? JSON.parse(fs.readFileSync(altReportPath, 'utf-8')) : null;

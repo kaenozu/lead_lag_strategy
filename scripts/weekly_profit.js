@@ -167,7 +167,7 @@ async function main() {
       pad(r.ticker, tickerW) +
       pad(buyStr, buyW) +
       pad(curStr, curW) +
-      pctStr
+      pad(pctStr, pctW)
     );
 
     if (r.profitPct !== null) {

@@ -17,7 +17,6 @@ const path = require('path');
 // Same imports as backtest/real.js
 const { config } = require('../lib/config');
 const {
-  fetchOhlcvDateRangeForTickers,
   loadCSV
 } = require('../lib/data');
 const {

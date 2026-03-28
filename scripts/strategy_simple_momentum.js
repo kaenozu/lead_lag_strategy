@@ -272,7 +272,7 @@ async function main() {
   const usData = usRes.byTicker;
   const jpData = jpRes.byTicker;
 
-  const { retUs, retJp, retJpOc } = buildReturnMatricesFromOhlcv(
+  const { retUs: _retUs, retJpOc } = buildReturnMatricesFromOhlcv(
     usData,
     jpData,
     US_ETF_TICKERS,
@@ -280,7 +280,7 @@ async function main() {
     config.backtest.jpWindowReturn
   );
 
-  console.log(`📊 取得完了：${retUs.length}営業日分`);
+  console.log(`📊 取得完了：${_retUs.length}営業日分`);
 
   // パラメータグリッドサーチ
   console.log('\n🔍 パラメータグリッドサーチ中...');
