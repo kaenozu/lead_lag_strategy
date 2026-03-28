@@ -174,7 +174,7 @@ function writeStrategyOutputs(outputDir, summary, strategySeries) {
     const csv = 'Date,Cumulative\n' +
       cumData.map((r) => `${r.date},${r.cumulative.toFixed(6)}`).join('\n');
     fs.writeFileSync(
-      path.join(outputDir, `cumulative_${strat.name.toLowerCase().replace(' ', '_')}.csv`),
+      path.join(outputDir, `cumulative_${strat.name.toLowerCase().replace(/ /g, '_')}.csv`),
       csv
     );
   }

@@ -38,6 +38,14 @@ function loadLocalData(dataDir, tickers) {
   return results;
 }
 
+function findPrevEntry(data, date) {
+  if (!data) return undefined;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (data[i].date < date) return data[i];
+  }
+  return undefined;
+}
+
 function buildReturnMatrices(usData, jpData) {
   const dates = [];
   const retUs = [];
@@ -56,7 +64,7 @@ function buildReturnMatrices(usData, jpData) {
     const jpOcReturns = [];
 
     for (const ticker of US_ETF_TICKERS) {
-      const prev = usData[ticker]?.find(r => r.date < date);
+      const prev = findPrevEntry(usData[ticker], date);
       const curr = usData[ticker]?.find(r => r.date === date);
       if (prev && curr) {
         usReturns.push((curr.close - prev.close) / prev.close);
@@ -64,7 +72,7 @@ function buildReturnMatrices(usData, jpData) {
     }
 
     for (const ticker of JP_ETF_TICKERS) {
-      const prevClose = jpData[ticker]?.find(r => r.date < date);
+      const prevClose = findPrevEntry(jpData[ticker], date);
       const curr = jpData[ticker]?.find(r => r.date === date);
       if (prevClose && curr) {
         jpCcReturns.push((curr.close - prevClose.close) / prevClose.close);

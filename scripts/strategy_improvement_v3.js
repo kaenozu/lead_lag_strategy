@@ -37,6 +37,14 @@ function loadLocalData(dataDir, tickers) {
   return results;
 }
 
+function findPrevEntry(data, date) {
+  if (!data) return undefined;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (data[i].date < date) return data[i];
+  }
+  return undefined;
+}
+
 function buildReturnMatrices(jpData) {
   const dates = [];
   const retJpCC = [];
@@ -51,7 +59,7 @@ function buildReturnMatrices(jpData) {
     const jpOcReturns = [];
 
     for (const ticker of JP_ETF_TICKERS) {
-      const prevClose = jpData[ticker]?.find(r => r.date < date);
+      const prevClose = findPrevEntry(jpData[ticker], date);
       const curr = jpData[ticker]?.find(r => r.date === date);
       if (prevClose && curr) {
         jpCcReturns.push((curr.close - prevClose.close) / prevClose.close);

@@ -29,7 +29,6 @@ describe('ops routes', () => {
     };
 
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'leadlag-ops-routes-'));
-    config.data.outputDir = tmpDir;
     fs.mkdirSync(path.dirname(AUDIT_PATH), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, 'notifications.log'),
@@ -49,7 +48,11 @@ describe('ops routes', () => {
     );
   });
 
-  afterAll(() => {
+  beforeEach(() => {
+    config.data.outputDir = tmpDir;
+  });
+
+  afterEach(() => {
     config.data.outputDir = prevOutputDir;
     config.operations.activePreset = prevPresetState.activePreset;
     config.backtest.windowLength = prevPresetState.windowLength;
@@ -58,7 +61,9 @@ describe('ops routes', () => {
     config.backtest.stability.maxPositionAbs = prevPresetState.maxPositionAbs;
     config.backtest.stability.maxGrossExposure = prevPresetState.maxGrossExposure;
     config.backtest.stability.dailyLossStop = prevPresetState.dailyLossStop;
+  });
 
+  afterAll(() => {
     if (prevAuditContent !== null) {
       fs.writeFileSync(AUDIT_PATH, prevAuditContent, 'utf8');
     } else {
@@ -106,11 +111,6 @@ describe('ops routes', () => {
     expect(config.backtest.windowLength).toBe(Number(config.operations.profiles.balanced.windowLength));
     expect(config.backtest.lambdaReg).toBe(Number(config.operations.profiles.balanced.lambdaReg));
     expect(config.backtest.quantile).toBe(Number(config.operations.profiles.balanced.quantile));
-
-    config.operations.activePreset = before.activePreset;
-    config.backtest.windowLength = before.windowLength;
-    config.backtest.lambdaReg = before.lambdaReg;
-    config.backtest.quantile = before.quantile;
   });
 
   test('POST /api/execution/plan returns an order plan', async () => {
