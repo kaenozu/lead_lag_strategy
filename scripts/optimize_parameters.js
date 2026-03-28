@@ -50,6 +50,9 @@ const OBJECTIVE_WEIGHTS = {
   mddPenalty: 6.0
 };
 
+// Top N results to display
+const TOP_N_RESULTS = 10;
+
 function calculateCompositeScore(result) {
   return (
     OBJECTIVE_WEIGHTS.sharpe * (result.sharpeRatio || 0) +
@@ -272,6 +275,7 @@ async function main() {
                   }
                 } catch (error) {
                   logger.warn(`バックテスト失敗：${JSON.stringify(params)}`, { error: error.message });
+                  console.warn(`  ⚠️  パラメータ組み合わせでエラー：${JSON.stringify(params)} - ${error.message}`);
                 }
               }
             }
@@ -285,7 +289,7 @@ async function main() {
   results.sort((a, b) => b.objectiveScore - a.objectiveScore);
 
   console.log('\n' + '='.repeat(80));
-  console.log('📊 最適パラメータ TOP10（複合スコア順）');
+  console.log(`📊 最適パラメータ TOP${TOP_N_RESULTS}（複合スコア順）`);
   console.log('='.repeat(80));
 
   console.log('\nRank  λ      nFact  Quant  Short  Stop   利回り (%)  SR     勝率 (%)  最大 DD (%)  Score');
@@ -296,7 +300,7 @@ async function main() {
     return;
   }
 
-  results.slice(0, 10).forEach((r, i) => {
+  results.slice(0, TOP_N_RESULTS).forEach((r, i) => {
     const totalReturn = r.totalReturn || 0;
     const sharpeRatio = r.sharpeRatio || 0;
     const winRate = r.winRate || 0;

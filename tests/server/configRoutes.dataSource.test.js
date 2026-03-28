@@ -24,10 +24,13 @@ describe('config routes: data source auto + POST params only', () => {
     backupFileContent = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
   });
 
-  afterAll(() => {
+  afterEach(() => {
     config.data.mode = prevMode;
     config.data.usOhlcvProvider = prevUsp;
     config.backtest.windowLength = prevWl;
+  });
+
+  afterAll(() => {
     const p = runtimeDataSourcePath();
     if (backupFileContent !== null) {
       fs.writeFileSync(p, backupFileContent, 'utf8');

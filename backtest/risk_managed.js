@@ -29,10 +29,10 @@ const BASE_CONFIG = {
 
 // リスク管理パラメータ
 const RISK_CONFIG = {
-  maxPositionSize: 0.10,      // 最大ポジションサイズ（10%）
-  maxTotalExposure: 0.60,     // 最大エクスポージャー（60%）
+  maxPositionSize: 0.25,      // 最大ポジションサイズ（25%）
+  maxTotalExposure: 1.50,     // 最大エクスポージャー（150%）
   volatilityTarget: 0.08,     // 目標ボラティリティ（8%）
-  maxDrawdownLimit: 0.10,     // 最大ドローダウン（10%）
+  maxDrawdownLimit: 0.15,     // 最大ドローダウン（15%）
   stopLoss: 0.05             // ストップロス（5%）
 };
 
@@ -54,7 +54,7 @@ const PARAM_GRID = {
 
 function buildPortfolio(signal, quantile = 0.4, riskConfig = null, currentVolatility = 0.10) {
   const n = signal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
+  const q = Math.max(1, Math.round(n * quantile));
   const indexed = signal.map((val, idx) => ({ val, idx })).sort((a, b) => a.val - b.val);
   const longIdx = indexed.slice(-q).map(x => x.idx);
   const shortIdx = indexed.slice(0, q).map(x => x.idx);
@@ -185,7 +185,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     ...config,
     orderedSectorKeys: appConfig.pca.orderedSectorKeys
   });
-  const totalCost = TRANSACTION_COSTS.slippage + TRANSACTION_COSTS.commission;
+  const totalCostRate = TRANSACTION_COSTS.slippage + TRANSACTION_COSTS.commission;
 
   // リスク管理用変数
   let cumulative = 1;
@@ -194,6 +194,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
   let rollingVolatility = 0.10;
   const volWindow = 20;
   const recentReturns = [];
+  let prevWeights = null;
 
   for (let i = config.warmupPeriod; i < retJpOc.length; i++) {
     const start = i - config.windowLength;
@@ -223,8 +224,13 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     let stratRet = 0;
     for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
 
-    // 取引コスト
-    stratRet = stratRet - totalCost;
+    // 取引コスト（ターンオーバーベース）
+    if (prevWeights) {
+      let tv = 0;
+      for (let j = 0; j < nJp; j++) tv += Math.abs(weights[j] - prevWeights[j]);
+      tv /= 2;
+      stratRet -= tv * totalCostRate;
+    }
 
     results.push({ date: retJpOc[i].date, return: stratRet, weights: [...weights] });
 
@@ -236,6 +242,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
     // ボラティリティ履歴更新
     recentReturns.push(stratRet);
     if (recentReturns.length > volWindow) recentReturns.shift();
+    prevWeights = weights;
   }
 
   return results;
@@ -247,6 +254,7 @@ function runStrategyWithRisk(retUs, retJp, retJpOc, config, labels, CFull, riskC
 
 function computeMetrics(returns) {
   if (!returns.length) return { AR: 0, RISK: 0, RR: 0, MDD: 0, Total: 0 };
+  if (returns.length === 1) return { AR: returns[0] * 252, RISK: 0, RR: 0, MDD: 0, Total: returns[0] * 100 };
   const ar = returns.reduce((a, b) => a + b, 0) / returns.length * 252;
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const risk = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1)) * Math.sqrt(252);
@@ -298,7 +306,7 @@ async function main() {
         const config = { ...BASE_CONFIG, lambdaReg: l, windowLength: w, quantile: q, warmupPeriod: w };
         const result = runStrategyWithRisk(retUs, retJp, retJpOc, config, SECTOR_LABELS, CFull, RISK_CONFIG);
         const metrics = computeMetrics(result.map(r => r.return));
-        if (metrics.RR > bestRR && metrics.MDD > -20) {
+        if (metrics.RR > bestRR && metrics.MDD > -15) {
           bestRR = metrics.RR;
           bestConfig = { ...config };
         }
