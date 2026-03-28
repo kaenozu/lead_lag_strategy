@@ -16,6 +16,13 @@ import streamlit as st
 
 from _paths import repo_root, results_dir
 
+# Python 版シグナル生成をインポート（Streamlit Cloud 用）
+try:
+    from generate_signal import generate_signal
+    PYTHON_SIGNAL_AVAILABLE = True
+except ImportError:
+    PYTHON_SIGNAL_AVAILABLE = False
+
 st.set_page_config(
     page_title="日米リードラグ戦略",
     page_icon="📊",
