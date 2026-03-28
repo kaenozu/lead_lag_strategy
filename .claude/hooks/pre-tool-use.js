@@ -15,7 +15,7 @@ const PROTECTED_FILES = [
   'config/runtime-data-source.json',
   'package-lock.json',
   '.gitignore',
-  '.claudeignore',
+  '.claudeignore'
 ];
 
 // Protected patterns
@@ -23,7 +23,7 @@ const PROTECTED_PATTERNS = [
   /\.env\..*$/,
   /.*\.key$/,
   /.*\.secret$/,
-  /.*password.*\.json$/,
+  /.*password.*\.json$/
 ];
 
 /**
@@ -66,7 +66,7 @@ function preToolUse(context) {
   const logEntry = {
     timestamp: new Date().toISOString(),
     tool: tool,
-    args: sanitizeArgs(args),
+    args: sanitizeArgs(args)
   };
   
   // Append to audit log
@@ -84,7 +84,7 @@ function preToolUse(context) {
       return {
         error: true,
         message: `⚠️ SECURITY BLOCK: Attempted to modify protected file: ${filePath}`,
-        blocked: true,
+        blocked: true
       };
     }
   }
@@ -111,7 +111,7 @@ function preToolUse(context) {
         return {
           error: true,
           message: `⚠️ SECURITY BLOCK: Dangerous command detected: ${command}`,
-          blocked: true,
+          blocked: true
         };
       }
     }
