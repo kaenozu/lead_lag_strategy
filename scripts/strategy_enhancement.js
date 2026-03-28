@@ -222,7 +222,7 @@ function strategyEnhancement() {
     { name: '3 日で 50% 削減', threshold: 3, reduction: 0.5 },
     { name: '3 日で 75% 削減', threshold: 3, reduction: 0.75 },
     { name: '5 日で 50% 削減', threshold: 5, reduction: 0.5 },
-    { name: '5 日で完全撤退', threshold: 5, reduction: 1.0 },
+    { name: '5 日で完全撤退', threshold: 5, reduction: 1.0 }
   ];
 
   for (const rule of lossRuleTests) {
@@ -299,7 +299,7 @@ function strategyEnhancement() {
     { name: '75% 超で 50% 削減', threshold: vol75, reduction: 0.5 },
     { name: '75% 超で 75% 削減', threshold: vol75, reduction: 0.75 },
     { name: '90% 超で 50% 削減', threshold: vol90, reduction: 0.5 },
-    { name: '90% 超で完全撤退', threshold: vol90, reduction: 1.0 },
+    { name: '90% 超で完全撤退', threshold: vol90, reduction: 1.0 }
   ];
 
   for (const test of volControlTests) {

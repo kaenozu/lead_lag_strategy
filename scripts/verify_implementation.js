@@ -32,8 +32,8 @@ console.log(`    N_FACTORS: ${N_FACTORS}`);
 console.log(`    LAMBDA_REG: ${LAMBDA_REG}`);
 console.log(`    QUANTILE: ${QUANTILE}`);
 console.log(`    WARMUP_PERIOD: ${WARMUP_PERIOD}`);
-console.log(`    取引コスト (slippage): 0`);
-console.log(`    取引コスト (commission): 0`);
+console.log('    取引コスト (slippage): 0');
+console.log('    取引コスト (commission): 0');
 
 // 2. ルックアヘッドバイアスのチェック
 console.log('\n[2/4] ルックアヘッドバイアスの検証...');

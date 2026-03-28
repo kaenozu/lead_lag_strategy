@@ -174,8 +174,9 @@ function runBacktestWithMarketRegime(
   let stopCooldownRemaining = 0;
 
   // シグナル品質追跡（bull期間の動的ポジション調整用）
-  const signalQualityWindow = params.signalQualityWindow ?? 20;
-  const signalQualityThreshold = params.signalQualityThreshold ?? 0.48;
+  const signalQualityWindow = params.signalQualityWindow ?? BACKTEST_CONFIG.signalQualityWindow;
+  const signalQualityThreshold = params.signalQualityThreshold ?? BACKTEST_CONFIG.signalQualityThreshold;
+  const minSignalHistoryForFilter = Math.max(1, Math.floor(signalQualityWindow / 2));
   const signalAccHistory = []; // 0 or 1: シグナルの方向正解履歴
 
   const signalGen = new LeadLagSignal({
@@ -218,7 +219,7 @@ function runBacktestWithMarketRegime(
     let positionSize = marketRegime.positionSize;
 
     // bull期間のシグナル品質フィルター（lookaheadなし：追跡履歴は前日までの実績）
-    if (params.useSignalQualityFilter && marketRegime.regime === MarketRegime.BULL && signalAccHistory.length >= 10) {
+    if (params.useSignalQualityFilter && marketRegime.regime === MarketRegime.BULL && signalAccHistory.length >= minSignalHistoryForFilter) {
       const currentQuality = signalAccHistory.reduce((a, b) => a + b, 0) / signalAccHistory.length;
       if (currentQuality < signalQualityThreshold) {
         positionSize = positionSize * Math.max(0, currentQuality / signalQualityThreshold);
@@ -350,7 +351,7 @@ async function main() {
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
   console.log(`\n📅 評価期間：${oneMonthAgo.toISOString().split('T')[0]} ~ ${today.toISOString().split('T')[0]}`);
-  console.log(`\n📋 市場環境フィルタ設定:`);
+  console.log('\n📋 市場環境フィルタ設定:');
   console.log(`  強気閾値：${(BACKTEST_CONFIG.marketRegime.bullThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  弱気閾値：${(BACKTEST_CONFIG.marketRegime.bearThreshold * 100).toFixed(0)}%（MA 比）`);
   console.log(`  強気時ポジション：${(BACKTEST_CONFIG.marketRegime.positionSizeBull * 100).toFixed(0)}%`);
@@ -359,7 +360,7 @@ async function main() {
 
   // データ取得
   const winDays = 500;
-  console.log(`\n📡 市場データ取得中...`);
+  console.log('\n📡 市場データ取得中...');
 
   const [usRes, jpRes] = await Promise.all([
     fetchOhlcvForTickers(US_ETF_TICKERS, winDays, config),
