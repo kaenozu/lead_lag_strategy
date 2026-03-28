@@ -4,15 +4,20 @@
 Streamlit Cloud 環境用
 """
 import json
+import subprocess
+import sys
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
 
+# yfinance のインポート（なければインストール）
 try:
     import yfinance as yf
 except ImportError:
-    yf = None
+    print("📦 Installing yfinance...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "yfinance"])
+    import yfinance as yf
 
 
 def fetch_etf_data(tickers: list[str], period: str = "1y") -> dict[str, pd.DataFrame]:
