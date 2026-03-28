@@ -20,8 +20,9 @@ from _paths import repo_root, results_dir
 try:
     from generate_signal import generate_signal
     PYTHON_SIGNAL_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PYTHON_SIGNAL_AVAILABLE = False
+    IMPORT_ERROR_MESSAGE = str(e)
 
 st.set_page_config(
     page_title="日米リードラグ戦略",
