@@ -8,7 +8,27 @@ const { createSkill } = require('./skill-base');
 const { fetchOhlcvForTickers, buildReturnMatricesFromOhlcv } = require('../lib/data');
 const { US_ETF_TICKERS, JP_ETF_TICKERS } = require('../lib/constants');
 const { config } = require('../lib/config');
-const { correlationMatrixSample } = require('../lib/math');
+const { correlationMatrixSample, covarianceMatrix } = require('../lib/math');
+const {
+  applyVolatilityTargeting,
+  calculateRealizedVolatility,
+  calculateKellyLeverage,
+  DEFAULT_CONFIG: VOL_CONFIG
+} = require('../lib/portfolio/volatility');
+const {
+  generateHedgeSignal,
+  fetchFXReturns,
+  calculateHedgedPerformance,
+  DEFAULT_CONFIG: HEDGE_CONFIG
+} = require('../lib/portfolio/fx-hedge');
+const {
+  calculateMomentum,
+  calculateQuality,
+  calculateValue,
+  calculateVolatilityFactor,
+  combineFactors,
+  DEFAULT_CONFIG: FACTOR_CONFIG
+} = require('../lib/portfolio/multi-factor');
 
 module.exports = createSkill({
   name: 'risk',
@@ -24,7 +44,12 @@ module.exports = createSkill({
     maxGrossExposure: 2.0,   // 最大グロス 200%
     maxNetExposure: 0.5,     // 最大ネット 50%
     // 取引コスト
-    transactionCost: 0.001
+    transactionCost: 0.001,
+    // ボラティリティ・ターゲティング
+    volTargeting: true,
+    // 為替ヘッジ
+    fxHedge: true,
+    hedgeRatio: 0.90
   },
   
   async run(skillConfig) {
