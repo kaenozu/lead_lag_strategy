@@ -110,8 +110,13 @@ describe('lib/math - Enhanced', () => {
       expect(() => math.correlationMatrix([])).toThrow('Invalid matrix');
     });
 
-    test('サンプル数が少なすぎる場合エラー', () => {
-      expect(() => math.correlationMatrix([[1, 2]])).toThrow('Need at least 2 samples');
+    test('サンプル数が少なすぎる場合は単位行列を返す', () => {
+      const result = math.correlationMatrix([[1, 2]]);
+      // n < 2 の場合は単位行列を返す（フォールバック）
+      expect(result).toEqual([
+        [1, 0],
+        [0, 1]
+      ]);
     });
   });
 
@@ -196,6 +201,82 @@ describe('lib/math - Enhanced', () => {
 
     test('無効なサイズでエラー', () => {
       expect(() => math.identity(0)).toThrow('must be positive');
+    });
+  });
+
+  // ============================================================
+  // 改善 1: ewmaCorrelationMatrix
+  // ============================================================
+  describe('ewmaCorrelationMatrix', () => {
+    const sampleData = [
+      [0.01, 0.02, 0.015],
+      [0.02, 0.015, 0.01],
+      [-0.01, -0.005, -0.008],
+      [0.005, 0.008, 0.003],
+      [0.015, 0.012, 0.018]
+    ];
+
+    test('N×N の正方行列を返す', () => {
+      const C = math.ewmaCorrelationMatrix(sampleData, 30);
+      expect(C.length).toBe(3);
+      expect(C[0].length).toBe(3);
+    });
+
+    test('対角要素がすべて 1', () => {
+      const C = math.ewmaCorrelationMatrix(sampleData, 30);
+      for (let i = 0; i < 3; i++) {
+        expect(C[i][i]).toBeCloseTo(1.0, 10);
+      }
+    });
+
+    test('対称行列である', () => {
+      const C = math.ewmaCorrelationMatrix(sampleData, 30);
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          expect(C[i][j]).toBeCloseTo(C[j][i], 10);
+        }
+      }
+    });
+
+    test('非対角要素が [-1, 1] の範囲内', () => {
+      const C = math.ewmaCorrelationMatrix(sampleData, 30);
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          expect(C[i][j]).toBeGreaterThanOrEqual(-1.0001);
+          expect(C[i][j]).toBeLessThanOrEqual(1.0001);
+        }
+      }
+    });
+
+    test('halflife が短いほど直近観測への感度が高い（サンプル相関と異なる）', () => {
+      const C_sample = math.correlationMatrixSample(sampleData);
+      const C_ewma15 = math.ewmaCorrelationMatrix(sampleData, 15);
+      const C_ewma60 = math.ewmaCorrelationMatrix(sampleData, 60);
+
+      // halflife=15 のほうが halflife=60 よりサンプル相関から離れていることを確認
+      const diff15 = Math.abs(C_ewma15[0][1] - C_sample[0][1]);
+      const diff60 = Math.abs(C_ewma60[0][1] - C_sample[0][1]);
+      expect(diff15).toBeGreaterThanOrEqual(diff60);
+    });
+
+    test('サンプル数が 1 のときはエラーをスローする', () => {
+      expect(() => math.ewmaCorrelationMatrix([[0.01, 0.02]], 30)).toThrow('Need at least 2 samples');
+    });
+
+    test('halflife が 0 以下のときエラーをスロー', () => {
+      expect(() => math.ewmaCorrelationMatrix(sampleData, 0)).toThrow();
+      expect(() => math.ewmaCorrelationMatrix(sampleData, -5)).toThrow();
+    });
+
+    test('大きな halflife ではサンプル相関に収束する', () => {
+      const C_sample = math.correlationMatrixSample(sampleData);
+      const C_ewma_large = math.ewmaCorrelationMatrix(sampleData, 999);
+      // 非常に大きな halflife ではほぼ等ウェイト → サンプル相関に近い
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          expect(C_ewma_large[i][j]).toBeCloseTo(C_sample[i][j], 1);
+        }
+      }
     });
   });
 });

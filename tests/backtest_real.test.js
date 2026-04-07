@@ -37,7 +37,6 @@ function makeReturns(nDays, valuesPerDay) {
 
 describe('runMomentumStrategy - OC リターン使用の検証', () => {
   const nDays = 130;
-  const nJp = 4;
   const window = 60;
   const quantile = 0.3;
 
@@ -137,5 +136,31 @@ describe('runBacktest - OC リターン使用の検証', () => {
 
     // 大きな OC リターンの方が総収益も大きいはず（OC リターンが正しく参照されている証拠）
     expect(Math.abs(sumLarge)).toBeGreaterThan(Math.abs(sumSmall));
+  });
+
+  test('ターンオーバー制限超過時も、前日ウェイトで日次損益は継続計上されること', () => {
+    const returnsJpOc = makeReturns(nDays, [+0.10, +0.10, -0.10, -0.10]);
+    const strictTurnoverConfig = {
+      ...config,
+      signalStability: {
+        smoothingAlpha: 1,
+        maxTurnoverPerDay: 0.000001
+      }
+    };
+
+    const result = runBacktest(
+      returnsUs,
+      returnsJp,
+      returnsJpOc,
+      strictTurnoverConfig,
+      sectorLabels,
+      CFull,
+      'EQUAL_WEIGHT'
+    );
+
+    // 初日の約定後、以降のリバランスは抑制されても日次損益は計上されるべき
+    expect(result.returns.length).toBe(nDays - warmupPeriod);
+    const meanReturn = result.returns.reduce((s, r) => s + r.return, 0) / result.returns.length;
+    expect(meanReturn).toBeCloseTo(0.20, 1);
   });
 });

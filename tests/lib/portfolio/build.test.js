@@ -92,11 +92,12 @@ describe('lib/portfolio/build', () => {
       const signal = [-0.5, 0.3, 0.8, -0.9, 0.1, -0.2];
       const weights = buildPortfolio(signal, 0.33);
 
+      // n=6, quantile=0.33 → round(1.98) = 2 銘柄
       const maxWeight = Math.max(...weights);
       const minWeight = Math.min(...weights);
 
-      expect(maxWeight).toBe(1);
-      expect(minWeight).toBe(-1);
+      expect(maxWeight).toBe(0.5);  // 1/2
+      expect(minWeight).toBe(-0.5);  // -1/2
     });
   });
 

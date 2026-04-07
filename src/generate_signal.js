@@ -12,7 +12,6 @@ const path = require('path');
 const { createLogger } = require('../lib/logger');
 const { config } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
-const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
 const { correlationMatrixSample } = require('../lib/math');
 const {
   fetchOhlcvForTickers,
@@ -27,6 +26,7 @@ const {
 const { SIGNAL_MIN_WINDOW_DAYS } = require('../lib/config');
 
 const logger = createLogger('SignalGenerator');
+const { writeAudit } = require('../lib/ops/audit');
 
 /**
  * コマンドライン引数を解析
@@ -170,7 +170,10 @@ async function main() {
     );
   }
 
-  const combined = retUs.map((r, i) => [...r.values, ...retJp[i].values]);
+  const minLen = Math.min(retUs.length, retJp.length);
+  const retUsAligned = retUs.slice(0, minLen);
+  const retJpAligned = retJp.slice(0, minLen);
+  const combined = retUsAligned.map((r, i) => [...r.values, ...retJpAligned[i].values]);
   const CFull = correlationMatrixSample(combined);
 
   const signalGen = new LeadLagSignal({
@@ -244,6 +247,16 @@ async function main() {
   console.log(`  最大: ${(Math.max(...signal) * 1000).toFixed(4)}`);
   console.log(`  最小: ${(Math.min(...signal) * 1000).toFixed(4)}`);
 
+  const latestDate = retUs.length ? retUs[retUs.length - 1].date : null;
+  writeAudit('signal.cli', {
+    latestDate,
+    windowLength: options.windowLength,
+    lambdaReg: options.lambdaReg,
+    quantile: options.quantile,
+    buyTickers: buyCandidates.map((s) => s.ticker),
+    sellTickers: sellCandidates.map((s) => s.ticker)
+  });
+
   // 結果保存
   if (options.save) {
     const outputDir = config.data.outputDir;
@@ -253,6 +266,7 @@ async function main() {
 
     const result = {
       timestamp: new Date().toISOString(),
+      latestDate,
       config: options,
       signals,
       buyCandidates,
@@ -279,7 +293,12 @@ async function main() {
 }
 
 main().catch(error => {
-  logger.error('Signal generation failed', { error: error.message, stack: error.stack });
+  logger.error('Signal generation failed', {
+    error: error.message,
+    stack: error.stack,
+    timestamp: new Date().toISOString()
+  });
   console.error('Error:', error.message);
-  process.exit(1);
+  const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+  process.exit(exitCode);
 });

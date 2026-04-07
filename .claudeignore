@@ -1,0 +1,71 @@
+# Claude Code Ignore File
+# Excludes files from Claude's context to reduce token usage and improve focus
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+e2e-artifacts/
+
+# Logs
+*.log
+server.log
+logs/
+
+# Environment files (sensitive)
+.env
+.env.local
+.env.*.local
+
+# Runtime config (contains API keys)
+config/runtime-data-source.json
+
+# Cache files
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+.eslintcache
+
+# IDE settings
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large data files
+data/*.csv
+data/cache/
+
+# Results (auto-generated)
+results/*.csv
+results/*.json
+
+# Git internals
+.git/
+
+# External repositories (safety)
+pro/
+
+# Python test cache
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

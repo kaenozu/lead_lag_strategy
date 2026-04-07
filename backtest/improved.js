@@ -10,8 +10,9 @@ const yahooFinance = new YahooFinance();
 const { LeadLagSignal } = require('../lib/pca');
 const { buildLeadLagMatrices } = require('../lib/lead_lag_matrices');
 const { buildPortfolio, computePerformanceMetrics } = require('../lib/portfolio');
-const { correlationMatrixSample } = require('../lib/math');
 const { US_ETF_TICKERS, JP_ETF_TICKERS, SECTOR_LABELS } = require('../lib/constants');
+const { computeCFull, writeOhlcvCsvByTicker } = require('./common');
+const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
 
 // ============================================================================
 // 設定
@@ -85,40 +86,22 @@ function loadLocalData(dataDir, tickers) {
 // ============================================================================
 
 /**
- * パフォーマンス指標の計算（年率換算・表示単位補正）
- * @param {Array<number>} returns - リターン系列（日次）
- * @param {number} ann - 年率換算係数（デフォルト：252）
- * @returns {Object} パフォーマンス指標（AR, RISK はパーセント表示）
+ * パフォーマンス指標の計算（表示用、パーセント単位）
+ * NOTE: lib/portfolio/computePerformanceMetrics は小数単位（0.05 = 5%）を返すが、
+ *       この関数はパーセント単位（5.0 = 5%）で返す。スクリプトの表示用専用。
+ * @param {Array<number>} returns - リターン系列（日次、小数単位）
+ * @returns {Object} パフォーマンス指標（AR, RISK, MDD, Total はパーセント表示）
  */
-function computeMetrics(returns, ann = 252) {
+function computeMetrics(returns) {
     const m = computePerformanceMetrics(returns);
-
-    // 年率リターン：既に年率換算済みなので、パーセント表示のみ（×100）
-    m.AR = m.AR * 100;
-
-    // 年率リスク：既に年率換算済みなので、パーセント表示のみ（×100）
-    m.RISK = m.RISK * 100;
-
-    // R/R 比：単位なし（そのまま）
-    m.RR = m.RR;
-
-    // MDD：パーセント表示（×100）
-    m.MDD = m.MDD * 100;
-
-    // Total：累積リターンから計算（パーセント表示）
-    m.Total = (m.Cumulative - 1) * 100;
-
-    return m;
-}
-
-// ============================================================================
-// データ処理
-// ============================================================================
-
-function computeCFull(retUs, retJp) {
-    const combined = retUs.slice(0, Math.min(retUs.length, retJp.length))
-        .map((r, i) => [...r.values, ...retJp[i].values]);
-    return correlationMatrixSample(combined);
+    return {
+        AR: m.AR * 100,
+        RISK: m.RISK * 100,
+        RR: m.RR,
+        MDD: m.MDD * 100,
+        Total: (m.Cumulative - 1) * 100,
+        Cumulative: m.Cumulative
+    };
 }
 
 // ============================================================================
@@ -135,21 +118,18 @@ function runStrategy(retUs, retJp, retJpOc, config, labels, CFull, useMomentum =
         let signal;
         
         if (useMomentum) {
-            signal = new Array(nJp).fill(0);
-            for (let j = start; j < i; j++)
-                for (let k = 0; k < nJp; k++) signal[k] += retJp[j].values[k];
-            signal = signal.map(x => x / config.windowLength);
+            signal = averageMomentumWindow(retJp, start, i, nJp);
         } else {
             const retUsWin = retUs.slice(start, i).map(r => r.values);
             const retJpWin = retJp.slice(start, i).map(r => r.values);
-            const retUsLatest = retUs[i].values;
+            // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+            const retUsLatest = retUs[i - 1].values;
             signal = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
         }
         
         const weights = buildPortfolio(signal, config.quantile);
         const retNext = retJpOc[i].values;
-        let stratRet = 0;
-        for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
+        const stratRet = weightedReturn(weights, retNext);
         results.push({ date: retJpOc[i].date, return: stratRet });
     }
     
@@ -165,14 +145,11 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         const start = i - config.windowLength;
         const retUsWin = retUs.slice(start, i).map(r => r.values);
         const retJpWin = retJp.slice(start, i).map(r => r.values);
-        const retUsLatest = retUs[i].values;
+        // ルックアヘッドバイアス回避：t-1 日の米国リターンを使用
+        const retUsLatest = retUs[i - 1].values;
 
         const signalPca = signalGen.computeSignal(retUsWin, retJpWin, retUsLatest, labels, CFull);
-        
-        const signalMom = new Array(nJp).fill(0);
-        for (let j = start; j < i; j++)
-            for (let k = 0; k < nJp; k++) signalMom[k] += retJp[j].values[k];
-        for (let k = 0; k < nJp; k++) signalMom[k] /= config.windowLength;
+        const signalMom = averageMomentumWindow(retJp, start, i, nJp);
         
         // ダブルソート（各シグナルを 3 等分）
         const sortedPca = [...signalPca].sort((a, b) => a - b);
@@ -200,12 +177,17 @@ function runDoubleSort(retUs, retJp, retJpOc, config, labels, CFull) {
         }
         
         const retNext = retJpOc[i].values;
-        let stratRet = 0;
-        for (let j = 0; j < nJp; j++) stratRet += weights[j] * retNext[j];
+        const stratRet = weightedReturn(weights, retNext);
         results.push({ date: retJpOc[i].date, return: stratRet });
     }
     
     return results;
+}
+
+function totalReturnPercent(metrics) {
+    if (metrics.Total !== undefined) return metrics.Total;
+    if (metrics.Cumulative !== undefined) return (metrics.Cumulative - 1) * 100;
+    return 0;
 }
 
 // ============================================================================
@@ -248,7 +230,12 @@ function optimizeParams(retUs, retJp, retJpOc, labels, CFull) {
     }
     
     generateCombinations(0, {});
-    
+    if (!bestConfig || !bestMetrics) {
+        const err = new Error('パラメータ最適化に失敗しました（有効な組み合わせがありません）');
+        err.code = 'OPTIMIZATION_FAILED';
+        throw err;
+    }
+
     console.log(`最適パラメータ: λ=${bestConfig.lambdaReg}, window=${bestConfig.windowLength}, q=${bestConfig.quantile}`);
     return { config: bestConfig, metrics: bestMetrics };
 }
@@ -276,14 +263,8 @@ async function main() {
 
     // データ保存（後で使用）
     console.log('\n[2/5] データを保存中...');
-    for (const t in usData) {
-        const csv = 'Date,Open,High,Low,Close,Volume\n' + usData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-        fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
-    for (const t in jpData) {
-        const csv = 'Date,Open,High,Low,Close,Volume\n' + jpData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-        fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
+    writeOhlcvCsvByTicker(dataDir, usData);
+    writeOhlcvCsvByTicker(dataDir, jpData);
     console.log('  保存完了：data/*.csv');
 
     // データ処理
@@ -337,7 +318,7 @@ async function main() {
     ];
     
     for (const { name, m } of summary) {
-        const total = m.Total !== undefined ? m.Total : m.Cumulative !== undefined ? (m.Cumulative - 1) * 100 : 0;
+        const total = totalReturnPercent(m);
         console.log(
             name.padEnd(15) +
             (m.AR || 0).toFixed(2).padStart(10) +
@@ -351,7 +332,7 @@ async function main() {
     // 結果保存
     const summaryCSV = 'Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)\n' +
         summary.map(s => {
-            const total = s.m.Total !== undefined ? s.m.Total : s.m.Cumulative !== undefined ? (s.m.Cumulative - 1) * 100 : 0;
+            const total = totalReturnPercent(s.m);
             return `${s.name},${(s.m.AR || 0).toFixed(4)},${(s.m.RISK || 0).toFixed(4)},${(s.m.RR || 0).toFixed(4)},${(s.m.MDD || 0).toFixed(4)},${total.toFixed(4)}`;
         }).join('\n');
     fs.writeFileSync(path.join(outputDir, 'backtest_summary_improved.csv'), summaryCSV);
@@ -400,7 +381,12 @@ if (require.main === module) {
     const logger = createLogger('BacktestImproved');
     
     main().catch(error => {
-        logger.error('Backtest failed', { error: error.message, stack: error.stack });
-        process.exit(1);
+        logger.error('Backtest failed', {
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+        process.exit(exitCode);
     });
 }

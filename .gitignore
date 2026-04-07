@@ -15,6 +15,7 @@ server.log
 # 結果ファイル（必要に応じて）
 results/*.csv
 results/*.json
+results/*.txt
 !results/.gitkeep
 
 # データファイル（必要に応じて）
@@ -26,15 +27,18 @@ data/cache/
 .DS_Store
 Thumbs.db
 
+# ローカル用の別リポジトリ（誤コミット防止）
+pro/
+
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
-# ビルド成果物
-dist/
-build/
+# Claude Code
+.claude/hooks/audit.log
 
 # テストカバレッジ
 coverage/

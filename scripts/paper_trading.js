@@ -279,7 +279,12 @@ async function main() {
 // エクスポート
 module.exports = { PaperTrader };
 
-// 実行
+// 実行: サンドボックスデモのみ（本番ジャーナルは npm run paper）
 if (require.main === module) {
-  main().catch(console.error);
+  if (process.argv.includes('--demo')) {
+    main().catch(console.error);
+  } else {
+    console.error('サンドボックスデモは npm run paper:demo を使用してください。本番ジャーナルは npm run paper です。');
+    process.exit(1);
+  }
 }

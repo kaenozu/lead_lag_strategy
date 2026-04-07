@@ -207,9 +207,9 @@ npm run signal
 
 ### 読むべき資料
 
-1. `README.md` - **はじめに**（npm コマンド・どのファイルを使うかの表）
-2. `BEGINNER_GUIDE.md` - 本ガイド（運用手順）
-3. `PROJECT_PLAN.md` - 戦略の詳細計画
+1. `docs/INDEX.md` - ドキュメント全体の索引
+2. `README.md` - **はじめに**（npm コマンド・どのファイルを使うか）
+3. `BEGINNER_GUIDE.md` - 本ガイド（運用手順）
 4. `results/backtest_summary_*.csv` - バックテスト結果
 
 ### 理解を深めるには

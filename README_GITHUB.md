@@ -1,4 +1,4 @@
-# 日米業種リードラグ戦略
+## 日米業種リードラグ戦略
 
 **初心者向け ETF 投資システム** - 楽天証券で 1 口から購入可能
 
@@ -30,7 +30,7 @@ node -v
 npm install
 
 # サーバー起動
-node server.js
+npm run server
 ```
 
 ### 使い方
@@ -54,12 +54,12 @@ node server.js
 
 | ファイル | 説明 |
 |----------|------|
-| `server.js` | Web サーバー + シグナル生成 API |
+| `src/server.js` | Web サーバー + シグナル生成 API |
 | `public/index.html` | フロントエンド UI |
-| `backtest_improved.js` | バックテスト（Yahoo Finance 直接取得） |
-| `backtest_risk_managed.js` | リスク管理強化版 |
-| `generate_signal.js` | シグナル生成 CLI ツール |
-| `paper_trading.js` | ペーパートレードツール |
+| `backtest/improved.js` | バックテスト（Yahoo Finance 直接取得） |
+| `backtest/risk_managed.js` | リスク管理強化版 |
+| `src/generate_signal.js` | シグナル生成 CLI ツール |
+| `scripts/paper_trading.js` | ペーパートレードツール |
 
 ## 🔧 設定
 
@@ -97,21 +97,21 @@ PORT=3000
 
 ## 📚 ドキュメント
 
+- [docs/INDEX.md](docs/INDEX.md) - ドキュメント索引（最初にここ）
 - [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md) - 初心者向け完全ガイド
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) - プロジェクト計画
-- [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md) - 実装完了レポート
+- [docs/TESTING.md](docs/TESTING.md) - テスト・品質ゲート
 
 ## 🛠️ 開発
 
 ```bash
 # サーバー起動（開発モード）
-node server.js
+npm run server
 
 # シグナル生成（CLI）
-node generate_signal.js
+npm run signal
 
 # ペーパートレード
-node paper_trading.js
+npm run paper
 ```
 
 ## 📄 ライセンス

@@ -17,7 +17,6 @@
  */
 
 module.exports = {
-  basic: require('./basic'),
   real: require('./real'),
   improved: require('./improved'),
   riskManaged: require('./risk_managed'),

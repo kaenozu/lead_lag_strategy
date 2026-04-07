@@ -66,10 +66,43 @@ module.exports = [
       'linebreak-style': ['error', 'unix'],
       quotes: ['error', 'single'],
       semi: ['error', 'always'],
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-console': 'off',
       'prefer-const': 'warn',
       'comma-dangle': ['error', 'never']
+    }
+  },
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        jest: 'readonly'
+      }
+    }
+  },
+  {
+    files: ['e2e/**/*.js'],
+    languageOptions: {
+      globals: {
+        document: 'readonly'
+      }
+    }
+  },
+  {
+    files: ['lib/data/**/*.js'],
+    languageOptions: {
+      globals: {
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+        URLSearchParams: 'readonly'
+      }
     }
   }
 ];

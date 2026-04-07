@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "maxDailyLossPct": null,
+  "pauseUntilReview": false,
+  "weeklyReviewWeekday": 5,
+  "notes": "コピーして results/operating-rules.json に保存（任意）。投資助言ではなく自分用メモ。",
+  "customLines": [
+    "損失が想定を超えたら一時停止する",
+    "パラメータ変更後は workflow:full を再実行する"
+  ]
+}

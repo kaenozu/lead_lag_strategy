@@ -18,42 +18,33 @@ const { config, validate: validateConfig } = require('../lib/config');
 const { LeadLagSignal } = require('../lib/pca');
 const {
   buildPortfolio,
+  buildDoubleSortPortfolio,
+  buildEqualWeightPortfolio,
   computePerformanceMetrics,
   applyTransactionCosts
 } = require('../lib/portfolio');
-const { correlationMatrixSample } = require('../lib/math');
 const {
   fetchOhlcvDateRangeForTickers,
-  loadCSV,
-  buildPaperAlignedReturnRows
+  loadCSV
 } = require('../lib/data');
+const {
+  buildReturnMatricesFromOhlcv,
+  computeCFull,
+  capPositionWeights,
+  smoothWeights,
+  turnover,
+  printStrategySummary,
+  writeOhlcvCsvByTicker,
+  writeStrategyOutputs
+} = require('./common');
+const {
+  US_ETF_TICKERS,
+  JP_ETF_TICKERS,
+  SECTOR_LABELS
+} = require('../lib/constants');
+const { averageMomentumWindow, weightedReturn } = require('../lib/backtestUtils');
 
 const logger = createLogger('BacktestReal');
-
-// ============================================================================
-// 定数
-// ============================================================================
-
-const US_ETF_TICKERS = [
-  'XLB', 'XLC', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLRE', 'XLU', 'XLV', 'XLY'
-];
-
-const JP_ETF_TICKERS = [
-  '1617.T', '1618.T', '1619.T', '1620.T', '1621.T', '1622.T', '1623.T',
-  '1624.T', '1625.T', '1626.T', '1627.T', '1628.T', '1629.T', '1630.T',
-  '1631.T', '1632.T', '1633.T'
-];
-
-const SECTOR_LABELS = {
-  'US_XLB': 'cyclical', 'US_XLE': 'cyclical', 'US_XLF': 'cyclical', 'US_XLRE': 'cyclical',
-  'US_XLK': 'defensive', 'US_XLP': 'defensive', 'US_XLU': 'defensive', 'US_XLV': 'defensive',
-  'US_XLI': 'neutral', 'US_XLC': 'neutral', 'US_XLY': 'neutral',
-  'JP_1618.T': 'cyclical', 'JP_1625.T': 'cyclical', 'JP_1629.T': 'cyclical', 'JP_1631.T': 'cyclical',
-  'JP_1617.T': 'defensive', 'JP_1621.T': 'defensive', 'JP_1627.T': 'defensive', 'JP_1630.T': 'defensive',
-  'JP_1619.T': 'neutral', 'JP_1620.T': 'neutral', 'JP_1622.T': 'neutral', 'JP_1623.T': 'neutral',
-  'JP_1624.T': 'neutral', 'JP_1626.T': 'neutral', 'JP_1628.T': 'neutral', 'JP_1632.T': 'neutral',
-  'JP_1633.T': 'neutral'
-};
 
 // ============================================================================
 // データ取得
@@ -89,99 +80,6 @@ function loadLocalData(dataDir, tickers) {
 // データ処理
 // ============================================================================
 
-/**
- * Close-to-Close リターンを計算
- */
-function computeCCReturns(ohlcData) {
-  const returns = [];
-  let prevClose = null;
-
-  for (const row of ohlcData) {
-    if (prevClose !== null && prevClose > 0) {
-      returns.push({
-        date: row.date,
-        return: (row.close - prevClose) / prevClose
-      });
-    }
-    prevClose = row.close;
-  }
-
-  return returns;
-}
-
-/**
- * Open-to-Close リターンを計算
- */
-function computeOCReturns(ohlcData) {
-  return ohlcData
-    .filter(r => r.open > 0)
-    .map(r => ({
-      date: r.date,
-      return: (r.close - r.open) / r.open
-    }));
-}
-
-/**
- * リターンマトリックスを構築
- */
-function buildReturnMatrices(usData, jpData) {
-  const usTickers = Object.keys(usData);
-  const jpTickers = Object.keys(jpData);
-
-  // リターン計算
-  const usCCReturns = {};
-  const jpCCReturns = {};
-  const jpOCReturns = {};
-
-  for (const t of usTickers) {
-    usCCReturns[t] = computeCCReturns(usData[t]);
-  }
-  for (const t of jpTickers) {
-    jpCCReturns[t] = computeCCReturns(jpData[t]);
-    jpOCReturns[t] = computeOCReturns(jpData[t]);
-  }
-
-  // 日付マップ
-  const usCCMap = new Map();
-  const jpCCMap = new Map();
-  const jpOCMap = new Map();
-
-  for (const t in usCCReturns) {
-    for (const r of usCCReturns[t]) {
-      if (!usCCMap.has(r.date)) usCCMap.set(r.date, {});
-      usCCMap.get(r.date)[t] = r.return;
-    }
-  }
-
-  for (const t in jpCCReturns) {
-    for (const r of jpCCReturns[t]) {
-      if (!jpCCMap.has(r.date)) jpCCMap.set(r.date, {});
-      jpCCMap.get(r.date)[t] = r.return;
-    }
-    for (const r of jpOCReturns[t]) {
-      if (!jpOCMap.has(r.date)) jpOCMap.set(r.date, {});
-      jpOCMap.get(r.date)[t] = r.return;
-    }
-  }
-
-  return buildPaperAlignedReturnRows(
-    usCCMap,
-    jpCCMap,
-    jpOCMap,
-    usTickers,
-    jpTickers,
-    config.backtest.jpWindowReturn
-  );
-}
-
-/**
- * 長期相関行列の計算
- */
-function computeCFull(returnsUs, returnsJp) {
-  const combined = returnsUs.slice(0, Math.min(returnsUs.length, returnsJp.length))
-    .map((r, i) => [...r.values, ...returnsJp[i].values]);
-  return correlationMatrixSample(combined);
-}
 
 // ============================================================================
 // 戦略実行
@@ -199,26 +97,32 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
   const signalGenerator = new LeadLagSignal(config);
   let prevWeights = null;
 
+  // 連続損失ルール：前日までの連続損失数で当日のポジションサイズを決定（ルックアヘッド回避）
+  let prevConsecutiveLoss = 0;
+  const consecutiveLossThreshold = Number(config?.consecutiveLoss?.threshold || 0);
+  const consecutiveLossReduction = Number(config?.consecutiveLoss?.reduction || 0);
+
   for (let i = config.warmupPeriod; i < returnsJpOc.length; i++) {
     const windowStart = i - config.windowLength;
     const retUsWindow = returnsUs.slice(windowStart, i).map(r => r.values);
     const retJpWindow = returnsJp.slice(windowStart, i).map(r => r.values);
-    // 論文: 共分散は Wt={t-L..t-1}、米国ショックは「直前に観測可能な米国 CC」＝当行 i（日付整列済み）
-    const retUsLatest = returnsUs[i].values;
+    // 論文: 共分散は Wt={t-L..t-1}、米国ショックは「直前に観測可能な米国 CC」＝t-1 日のデータ
+    // 注意：returnsUs[i] は t 日の米国リターンであり、日本市場が営業中の t 日には観測できない
+    // したがって、returnsUs[i-1]（t-1 日の米国リターン）を使用する
+    const retUsLatest = returnsUs[i - 1].values;
+
+    // ポジションサイズは前日の連続損失カウントで決定（当日リターンを見ない）
+    let positionSize = 1.0;
+    if (Number.isFinite(consecutiveLossThreshold) && consecutiveLossThreshold > 0 &&
+        prevConsecutiveLoss >= consecutiveLossThreshold) {
+      positionSize = 1.0 - consecutiveLossReduction;
+    }
 
     let weights;
 
     if (strategy === 'DOUBLE_SORT') {
       // ダブルソート：モメンタムと PCA を組み合わせ
-      const momentum = new Array(nJp).fill(0);
-      for (let j = i - config.windowLength; j < i; j++) {
-        for (let k = 0; k < nJp; k++) {
-          momentum[k] += returnsJp[j].values[k];
-        }
-      }
-      for (let k = 0; k < nJp; k++) {
-        momentum[k] /= config.windowLength;
-      }
+      const momentum = averageMomentumWindow(returnsJp, i - config.windowLength, i, nJp);
 
       const pcaSignal = signalGenerator.computeSignal(
         retUsWindow, retJpWindow, retUsLatest, sectorLabels, CFull
@@ -238,19 +142,47 @@ function runBacktest(returnsUs, returnsJp, returnsJpOc, config, sectorLabels, CF
       weights = buildPortfolio(signal, config.quantile);
     }
 
+    // ポジションサイズ適用（連続損失時は縮小）
+    weights = weights.map(w => w * positionSize);
+
+    // シグナル平滑化＋ポジション上限
+    const smoothingAlpha = Number(config?.signalStability?.smoothingAlpha || 0);
+    weights = smoothWeights(prevWeights, weights, smoothingAlpha);
+    weights = capPositionWeights(weights, Number(config?.riskLimits?.maxAbsWeight || 1));
+
+    // ターンオーバー制限（高回転日の過剰売買を回避）
+    const maxTurnoverPerDay = Number(config?.signalStability?.maxTurnoverPerDay || 1);
+    const todayTurnover = turnover(prevWeights, weights);
+    if (prevWeights && Number.isFinite(maxTurnoverPerDay) && maxTurnoverPerDay > 0 && todayTurnover > maxTurnoverPerDay) {
+      weights = prevWeights;
+    }
+
     // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
     // シグナルはt-1の終値までのデータで生成されるため、t日の始値で取引しOCリターンを収益とすることが
     // 正しいアプローチ。終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
     const retNext = returnsJpOc[i].values;
 
     // ポートフォオリターン計算
-    let strategyRet = 0;
-    for (let j = 0; j < nJp; j++) {
-      strategyRet += weights[j] * retNext[j];
-    }
+    let strategyRet = weightedReturn(weights, retNext);
 
     // 取引コスト（ターンオーバー基準。コスト 0 のときは論文の無摩擦と一致）
     strategyRet = applyTransactionCosts(strategyRet, config.transactionCosts, prevWeights, weights);
+
+    // 日次損失ストップ（簡易）
+    const dailyLossStop = Number(config?.riskLimits?.dailyLossStop || 0);
+    if (Number.isFinite(dailyLossStop) && dailyLossStop > 0) {
+      strategyRet = Math.max(strategyRet, -dailyLossStop);
+    }
+
+    // 連続損失カウント更新（翌日のポジションサイズ決定用）
+    if (Number.isFinite(consecutiveLossThreshold) && consecutiveLossThreshold > 0) {
+      if (strategyRet < 0) {
+        prevConsecutiveLoss++;
+      } else {
+        prevConsecutiveLoss = 0;
+      }
+    }
+
     prevWeights = weights;
 
     strategyReturns.push({
@@ -273,25 +205,14 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
   let prevWeights = null;
 
   for (let i = window; i < returnsJpOc.length; i++) {
-    const momentum = new Array(nJp).fill(0);
-    for (let j = i - window; j < i; j++) {
-      for (let k = 0; k < nJp; k++) {
-        momentum[k] += returnsJp[j].values[k];
-      }
-    }
-    for (let k = 0; k < nJp; k++) {
-      momentum[k] /= window;
-    }
+    const momentum = averageMomentumWindow(returnsJp, i - window, i, nJp);
 
     const weights = buildPortfolio(momentum, quantile);
     // ルックアヘッドバイアスを避けるため、t日の取引収益には始値-終値（OC）リターンを使用する。
     // 終値-終値（CC）リターン（returnsJp[i]）は使用しないこと。
     const retNext = returnsJpOc[i].values;
 
-    let strategyRet = 0;
-    for (let j = 0; j < nJp; j++) {
-      strategyRet += weights[j] * retNext[j];
-    }
+    let strategyRet = weightedReturn(weights, retNext);
 
     strategyRet = applyTransactionCosts(strategyRet, transactionCosts, prevWeights, weights);
     prevWeights = weights;
@@ -307,53 +228,6 @@ function runMomentumStrategy(returnsJp, returnsJpOc, window = 60, quantile = 0.4
 }
 
 // ============================================================================
-// ダブルソート
-// ============================================================================
-
-function buildDoubleSortPortfolio(momentumSignal, pcaSignal, quantile = 0.4) {
-  const n = momentumSignal.length;
-  const q = Math.max(1, Math.floor(n * quantile));
-
-  const momentumRanked = momentumSignal.map((val, idx) => ({ val, idx }))
-    .sort((a, b) => a.val - b.val);
-
-  const pcaRanked = pcaSignal.map((val, idx) => ({ val, idx }))
-    .sort((a, b) => a.val - b.val);
-
-  const rankMap = new Map();
-  for (let i = 0; i < n; i++) {
-    const momIdx = momentumRanked[i].idx;
-    const pcaIdx = pcaRanked[i].idx;
-    if (!rankMap.has(momIdx)) rankMap.set(momIdx, 0);
-    if (!rankMap.has(pcaIdx)) rankMap.set(pcaIdx, 0);
-    rankMap.set(momIdx, rankMap.get(momIdx) + i);
-    rankMap.set(pcaIdx, rankMap.get(pcaIdx) + i);
-  }
-
-  const combinedRank = Array.from(rankMap.entries())
-    .map(([idx, rank]) => ({ idx, rank }))
-    .sort((a, b) => a.rank - b.rank);
-
-  const longIdx = combinedRank.slice(-q).map(x => x.idx);
-  const shortIdx = combinedRank.slice(0, q).map(x => x.idx);
-
-  const weights = new Array(n).fill(0);
-  const w = 1.0 / q;
-  for (const idx of longIdx) weights[idx] = w;
-  for (const idx of shortIdx) weights[idx] = -w;
-
-  return weights;
-}
-
-function buildEqualWeightPortfolio(n, longIndices, shortIndices) {
-  const weights = new Array(n).fill(0);
-  const w = 1.0 / longIndices.length;
-  for (const idx of longIndices) weights[idx] = w;
-  for (const idx of shortIndices) weights[idx] = -w;
-  return weights;
-}
-
-// ============================================================================
 // メイン処理
 // ============================================================================
 
@@ -366,8 +240,8 @@ async function main() {
     logger.warn('Configuration warnings', { warnings: configErrors });
   }
 
-  const dataDir = path.join(__dirname, 'data');
-  const outputDir = path.join(__dirname, 'results');
+  const dataDir = path.join(__dirname, '..', 'data');
+  const outputDir = path.join(__dirname, '..', 'results');
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -396,21 +270,17 @@ async function main() {
     jpData = jpRes.byTicker;
 
     logger.info('Saving data to CSV...');
-    for (const t in usData) {
-      const csv = 'Date,Open,High,Low,Close,Volume\n' +
-        usData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-      fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
-    for (const t in jpData) {
-      const csv = 'Date,Open,High,Low,Close,Volume\n' +
-        jpData[t].map(r => `${r.date},${r.open},${r.high},${r.low},${r.close},${r.volume ?? 0}`).join('\n');
-      fs.writeFileSync(path.join(dataDir, `${t}.csv`), csv);
-    }
+    writeOhlcvCsvByTicker(dataDir, usData);
+    writeOhlcvCsvByTicker(dataDir, jpData);
   }
 
   // データ処理
   logger.info('Processing data...');
-  const { returnsUs, returnsJp, returnsJpOc, dates } = buildReturnMatrices(usData, jpData);
+  const { retUs: returnsUs, retJp: returnsJp, retJpOc: returnsJpOc, dates } = buildReturnMatricesFromOhlcv(
+    usData,
+    jpData,
+    config.backtest.jpWindowReturn
+  );
   logger.info(`Trading days: ${dates.length}, Period: ${dates[0]} ~ ${dates[dates.length - 1]}`);
 
   if (dates.length < 100) {
@@ -432,7 +302,19 @@ async function main() {
     quantile: config.backtest.quantile,
     warmupPeriod: config.backtest.windowLength,
     transactionCosts: config.backtest.transactionCosts,
-    orderedSectorKeys: config.pca.orderedSectorKeys
+    orderedSectorKeys: config.pca.orderedSectorKeys,
+    signalStability: {
+      smoothingAlpha: config.backtest.smoothingAlpha,
+      maxTurnoverPerDay: config.backtest.maxTurnoverPerDay
+    },
+    riskLimits: {
+      maxAbsWeight: config.backtest.maxAbsWeight,
+      dailyLossStop: config.backtest.dailyLossStop
+    },
+    consecutiveLoss: {
+      threshold: config.backtest.consecutiveLoss?.threshold,
+      reduction: config.backtest.consecutiveLoss?.reduction
+    }
   };
 
   const resultsSub = runBacktest(returnsUs, returnsJp, returnsJpOc, backtestConfig, SECTOR_LABELS, CFull, 'PCA_SUB');
@@ -452,65 +334,34 @@ async function main() {
   );
   const metricsMom = computePerformanceMetrics(resultsMom.returns.map(r => r.return));
 
-  // 結果表示
-  logger.info('Backtest completed');
-  console.log('\n' + '='.repeat(70));
-  console.log('Strategy Comparison Summary');
-  console.log('='.repeat(70));
-  console.log(
-    'Strategy'.padEnd(15) +
-    'AR (%)'.padStart(10) +
-    'RISK (%)'.padStart(10) +
-    'R/R'.padStart(8) +
-    'MDD (%)'.padStart(10) +
-    'Total (%)'.padStart(12)
-  );
-  console.log('-'.repeat(70));
-
   const summary = [
     { name: 'MOM', m: metricsMom },
     { name: 'PCA PLAIN', m: metricsPlain },
     { name: 'PCA SUB', m: metricsSub }
   ];
-
-  for (const { name, m } of summary) {
-    console.log(
-      name.padEnd(15) +
-      (m.AR * 100).toFixed(2).padStart(10) +
-      (m.RISK * 100).toFixed(2).padStart(10) +
-      m.RR.toFixed(2).padStart(8) +
-      (m.MDD * 100).toFixed(2).padStart(10) +
-      ((m.Cumulative - 1) * 100).toFixed(2).padStart(12)
-    );
-  }
-
-  // 結果保存
-  const summaryCSV = 'Strategy,AR (%),RISK (%),R/R,MDD (%),Total (%)\n' +
-    summary.map(s =>
-      `${s.name},${(s.m.AR * 100).toFixed(4)},${(s.m.RISK * 100).toFixed(4)},${s.m.RR.toFixed(4)},${(s.m.MDD * 100).toFixed(4)},${((s.m.Cumulative - 1) * 100).toFixed(4)}`
-    ).join('\n');
-  fs.writeFileSync(path.join(outputDir, 'backtest_summary_real.csv'), summaryCSV);
-
-  // 累積リターン
-  for (const { name } of summary) {
-    const strat = name === 'MOM' ? resultsMom : name === 'PCA PLAIN' ? resultsPlain : resultsSub;
-    let cum = 1;
-    const cumData = strat.returns.map(r => {
-      cum *= (1 + r.return);
-      return { date: r.date, cumulative: cum };
-    });
-    const csv = 'Date,Cumulative\n' +
-      cumData.map(r => `${r.date},${r.cumulative.toFixed(6)}`).join('\n');
-    fs.writeFileSync(path.join(outputDir, `cumulative_${name.toLowerCase().replace(' ', '_')}.csv`), csv);
-  }
-
+  logger.info('Backtest completed');
+  printStrategySummary(summary);
+  writeStrategyOutputs(
+    outputDir,
+    summary,
+    [
+      { name: 'MOM', returns: resultsMom.returns },
+      { name: 'PCA PLAIN', returns: resultsPlain.returns },
+      { name: 'PCA SUB', returns: resultsSub.returns }
+    ]
+  );
   logger.info('Results saved', { outputDir });
 }
 
 if (require.main === module) {
   main().catch(error => {
-    logger.error('Backtest failed', { error: error.message, stack: error.stack });
-    process.exit(1);
+    logger.error('Backtest failed', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+    const exitCode = error.code === 'INSUFFICIENT_DATA' ? 2 : 1;
+    process.exit(exitCode);
   });
 }
 
