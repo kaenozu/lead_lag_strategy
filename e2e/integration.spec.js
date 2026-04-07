@@ -98,7 +98,7 @@ test.describe('日米業種リードラグ戦略 - 統合テスト', () => {
       console.log('✅ API /api/signal テスト：成功');
     });
 
-    test.skip('POST /api/portfolio - 正常系（10 万円）', async ({ page }) => {
+    test.skip('POST /api/portfolio - 正常系（10 万円） [portfolio API/UI 再導入後に再有効化]', async ({ page }) => {
       // API モック設定
       await page.route('**/api/config', async (route) => {
         await route.fulfill({
@@ -187,7 +187,7 @@ test.describe('日米業種リードラグ戦略 - 統合テスト', () => {
       console.log('✅ API /api/portfolio 正常系（10 万円）: 成功');
     });
 
-    test.skip('POST /api/portfolio - 異常系（5,000 円）', async ({ page }) => {
+    test.skip('POST /api/portfolio - 異常系（5,000 円） [portfolio API/UI 再導入後に再有効化]', async ({ page }) => {
       // API モック設定
       await page.route('**/api/config', async (route) => {
         await route.fulfill({
@@ -294,7 +294,7 @@ test.describe('日米業種リードラグ戦略 - 統合テスト', () => {
       console.log('✅ フロントエンド ページ表示：成功');
     });
 
-    test.skip('ポートフォリオパネルが存在する（初期状態は非表示）', async ({ page }) => {
+    test.skip('ポートフォリオパネルが存在する（初期状態は非表示） [portfolio UI 再導入後に再有効化]', async ({ page }) => {
       await page.goto('/');
       
       // ポートフォリオパネルの存在を確認（初期状態では display:none）
